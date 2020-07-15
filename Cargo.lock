@@ -19,7 +19,9 @@ checksum = "f9a06fb2e53271d7c279ec1efea6ab691c35a2ae67ec0d91d7acec0caf13b518"
 name = "jam"
 version = "0.1.0"
 dependencies = [
+ "lazy_static",
  "llvm-sys",
+ "regex",
 ]
 
 [[package]]
