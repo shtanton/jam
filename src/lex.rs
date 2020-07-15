@@ -4,6 +4,7 @@ use lazy_static::lazy_static;
 
 #[derive(Debug)]
 pub enum Token {
+    Identifier(String),
     IntegerLiteral(i64),
     OpenBracket,
     CloseBracket,
@@ -12,19 +13,24 @@ pub enum Token {
 impl Token {
     fn get_next_token(input: &str) -> Result<(Option<Token>, usize), String> {
         lazy_static! {
-            static ref INTEGER_LITERAL_PATTERN: Regex = Regex::new(r"^(-?\d+)").unwrap();
+            static ref IDENTIFIER_PATTERN: Regex = Regex::new(r"^([A-Za-z_][A-Za-z0-9_]*)").unwrap();
+            static ref INTEGER_LITERAL_PATTERN: Regex = Regex::new(r"^(-?\d+)[^A-Za-z_]").unwrap();
             static ref OPEN_BRACKET_PATTERN: Regex = Regex::new(r"^\(").unwrap();
-            static ref CLOSE_BRACKET_PATTERN: Regex = Regex::new(r"^\)").unwrap();
+            static ref CLOSE_BRACKET_PATTERN: Regex = Regex::new(r"^\)($|[\)\s])").unwrap();
             static ref WHITESPACE_PATTERN: Regex = Regex::new(r"^\s+").unwrap();
         }
-        if let Some(captures) = INTEGER_LITERAL_PATTERN.captures(input) {
-            let value: i64 = captures.get(1).unwrap().as_str().parse().unwrap();
+        if let Some(captures) = IDENTIFIER_PATTERN.captures(input) {
+            let name = captures.get(1).unwrap().as_str().to_string();
             let range = captures.get(0).unwrap();
+            Ok((Some(Token::Identifier(name)), range.end() - range.start()))
+        } else if let Some(captures) = INTEGER_LITERAL_PATTERN.captures(input) {
+            let value: i64 = captures.get(1).unwrap().as_str().parse().unwrap();
+            let range = captures.get(1).unwrap();
             Ok((Some(Token::IntegerLiteral(value)), range.end() - range.start()))
         } else if let Some(range) = OPEN_BRACKET_PATTERN.find(input) {
             Ok((Some(Token::OpenBracket), range.end() - range.start()))
-        } else if let Some(range) = CLOSE_BRACKET_PATTERN.find(input) {
-            Ok((Some(Token::CloseBracket), range.end() - range.start()))
+        } else if let Some(_) = CLOSE_BRACKET_PATTERN.find(input) {
+            Ok((Some(Token::CloseBracket), 1))
         } else if let Some(range) = WHITESPACE_PATTERN.find(input) {
             Ok((None, range.end() - range.start()))
         } else {
