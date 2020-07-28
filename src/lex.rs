@@ -27,14 +27,14 @@ impl Token {
             Ok((Some(Token::Let), 3))
         } else if FN_PATTERN.is_match(input) {
             Ok((Some(Token::Fn), 2))
-        } else if let Some(captures) = IDENTIFIER_PATTERN.captures(input) {
-            let name = captures.get(1).unwrap().as_str().to_string();
-            let range = captures.get(0).unwrap();
-            Ok((Some(Token::Identifier(name)), range.end() - range.start()))
         } else if let Some(captures) = INTEGER_LITERAL_PATTERN.captures(input) {
             let value: i64 = captures.get(1).unwrap().as_str().parse().unwrap();
             let range = captures.get(1).unwrap();
             Ok((Some(Token::IntegerLiteral(value)), range.end() - range.start()))
+        } else if let Some(captures) = IDENTIFIER_PATTERN.captures(input) {
+            let name = captures.get(1).unwrap().as_str().to_string();
+            let range = captures.get(0).unwrap();
+            Ok((Some(Token::Identifier(name)), range.end() - range.start()))
         } else if OPEN_BRACKET_PATTERN.is_match(input) {
             Ok((Some(Token::OpenBracket), 1))
         } else if CLOSE_BRACKET_PATTERN.is_match(input) {

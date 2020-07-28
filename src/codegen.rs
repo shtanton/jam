@@ -1,12 +1,10 @@
-extern crate llvm_sys;
-
 use llvm_sys::core::{
     LLVMModuleCreateWithName, LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeModule, LLVMSetTarget, LLVMVoidTypeInContext,
     LLVMFunctionType, LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMPositionBuilderAtEnd, LLVMBuildRet, LLVMIntTypeInContext, LLVMConstInt, LLVMPointerType,
     LLVMBuildGlobalStringPtr, LLVMBuildCall,
 };
 use llvm_sys::bit_writer::LLVMWriteBitcodeToFile;
-use llvm_sys::{LLVMBuilder, LLVMContext, LLVMValue};
+use llvm_sys::{LLVMBuilder, LLVMContext, LLVMValue, LLVMModule};
 use std::ptr;
 use crate::parse::{Expr, ExprKind};
 
@@ -16,7 +14,7 @@ macro_rules! c_str {
     );
 }
 
-fn gen_expr(expr: Expr) -> Result<*mut LLVMValue, String> {
+fn gen_expr(expr: Expr, builder: *mut LLVMBuilder) -> Result<*mut LLVMValue, String> {
     match expr.kind {
         ExprKind::IntegerLiteral(num) => {
             Ok(unsafe {LLVMConstInt(expr.typ, num as u64, 1)})
@@ -24,12 +22,23 @@ fn gen_expr(expr: Expr) -> Result<*mut LLVMValue, String> {
         ExprKind::Identifier(_) => {
             Err("identifiers as expressions isn't implemented yet".to_string())
         }
+        ExprKind::FunctionCall {
+            function,
+            params: param_exprs,
+        } => {
+            let params: Result<Vec<*mut LLVMValue>, String> = param_exprs.into_iter().map(|param| gen_expr(param, builder)).collect();
+            let params = params?;
+            let len = params.len() as u32;
+            let value = unsafe {
+                LLVMBuildCall(builder, function, params.as_ptr() as *mut _, len, c_str!("test"))
+            };
+            Ok(value)
+        }
     }
 }
 
-pub fn codegen(ast: Expr, context: *mut LLVMContext) {
+pub fn codegen(ast: Expr, context: *mut LLVMContext, module: *mut LLVMModule) {
     unsafe {
-        let module = LLVMModuleCreateWithName(c_str!("main"));
         let builder = LLVMCreateBuilderInContext(context);
 
         //let void_type = LLVMVoidTypeInContext(context);
@@ -48,12 +57,11 @@ pub fn codegen(ast: Expr, context: *mut LLVMContext) {
 
         //let hello_world_str = LLVMBuildGlobalStringPtr(builder, c_str!("hello world"), c_str!(""));
         //LLVMBuildCall(builder, puts_func, [hello_world_str].as_ptr() as *mut _, 1, c_str!(""));
-        LLVMBuildRet(builder, gen_expr(ast).unwrap());
+        LLVMBuildRet(builder, gen_expr(ast, builder).unwrap());
 
         LLVMSetTarget(module, c_str!("x86_64-pc-linux-gnu"));
         LLVMWriteBitcodeToFile(module, c_str!("main.bc"));
 
         LLVMDisposeBuilder(builder);
-        LLVMDisposeModule(module);
     };
 }

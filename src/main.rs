@@ -4,10 +4,17 @@ extern crate im;
 mod lex;
 mod parse;
 mod codegen;
+mod stdlib;
 
-use llvm_sys::core::{LLVMContextCreate, LLVMContextDispose};
+use llvm_sys::core::{LLVMContextCreate, LLVMContextDispose, LLVMModuleCreateWithName, LLVMDisposeModule};
 
 use std::env;
+
+macro_rules! c_str {
+    ($s:expr) => (
+        concat!($s, "\0").as_ptr() as *const i8
+    );
+}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -16,8 +23,12 @@ fn main() {
 
     unsafe {
         let context = LLVMContextCreate();
-        let ast = parse::Parser::parse(tokens.into_iter(), context).unwrap();
-        codegen::codegen(ast, context);
+        let module = LLVMModuleCreateWithName(c_str!("main"));
+
+        let env = stdlib::stdlib(context, module);
+        let ast = parse::Parser::parse(tokens.into_iter(), env, context).unwrap();
+        codegen::codegen(ast, context, module);
+        LLVMDisposeModule(module);
         LLVMContextDispose(context);
     }
 }
