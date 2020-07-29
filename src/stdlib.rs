@@ -1,12 +1,12 @@
+use crate::codegen::Value;
+use crate::parse::{Env, Type, Variable};
+use im::HashMap;
 use llvm_sys::core::{
     LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMBuildAdd, LLVMBuildRet, LLVMBuildSub,
     LLVMCreateBuilderInContext, LLVMFunctionType, LLVMGetParam, LLVMIntTypeInContext,
     LLVMPositionBuilderAtEnd,
 };
 use llvm_sys::{LLVMContext, LLVMModule};
-use im::HashMap;
-use crate::parse::{Env, Variable, Type};
-use crate::codegen::Value;
 
 macro_rules! c_str {
     ($s:expr) => {
@@ -22,23 +22,30 @@ pub const SUB_FUNC_TYPE_ID: u64 = 3;
 
 pub fn stdlib_env() -> Env {
     let mut env = Env::default();
-    env.variables.insert("+".to_string(), Variable::Value {
-        id: ADD_FUNC_ID,
-        typ: Type::Function {
-            id: ADD_FUNC_TYPE_ID,
-            args: vec![Type::Other(I32_TYPE_ID), Type::Other(I32_TYPE_ID)],
-            ret: Box::new(Type::Other(I32_TYPE_ID)),
+    env.variables.insert(
+        "+".to_string(),
+        Variable::Value {
+            id: ADD_FUNC_ID,
+            typ: Type::Function {
+                id: ADD_FUNC_TYPE_ID,
+                args: vec![Type::Other(I32_TYPE_ID), Type::Other(I32_TYPE_ID)],
+                ret: Box::new(Type::Other(I32_TYPE_ID)),
+            },
         },
-    });
-    env.variables.insert("-".to_string(), Variable::Value {
-        id: SUB_FUNC_ID,
-        typ: Type::Function {
-            id: SUB_FUNC_TYPE_ID,
-            args: vec![Type::Other(I32_TYPE_ID), Type::Other(I32_TYPE_ID)],
-            ret: Box::new(Type::Other(I32_TYPE_ID)),
+    );
+    env.variables.insert(
+        "-".to_string(),
+        Variable::Value {
+            id: SUB_FUNC_ID,
+            typ: Type::Function {
+                id: SUB_FUNC_TYPE_ID,
+                args: vec![Type::Other(I32_TYPE_ID), Type::Other(I32_TYPE_ID)],
+                ret: Box::new(Type::Other(I32_TYPE_ID)),
+            },
         },
-    });
-    env.variables.insert("i32".to_string(), Variable::Type(Type::Other(I32_TYPE_ID)));
+    );
+    env.variables
+        .insert("i32".to_string(), Variable::Type(Type::Other(I32_TYPE_ID)));
     env
 }
 

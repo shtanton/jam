@@ -8,18 +8,22 @@ pub enum Token {
     IntegerLiteral(i64),
     OpenBracket,
     CloseBracket,
+    OpenSquare,
+    CloseSquare,
 }
 
 impl Token {
     fn get_next_token(input: &str) -> Result<(Option<Token>, usize), String> {
         lazy_static! {
-            static ref LET_PATTERN: Regex = Regex::new(r"^let(\s|$)").unwrap();
+            static ref LET_PATTERN: Regex = Regex::new(r"^let($|[\s\)\]])").unwrap();
             static ref IDENTIFIER_PATTERN: Regex =
                 Regex::new(r"^([A-Za-z_+-/*][A-Za-z0-9_+-/*]*)").unwrap();
             static ref INTEGER_LITERAL_PATTERN: Regex =
-                Regex::new(r"^(-?\d+)([^A-Za-z_]|$)").unwrap();
+                Regex::new(r"^(-?\d+)($|[\s\)\]])").unwrap();
             static ref OPEN_BRACKET_PATTERN: Regex = Regex::new(r"^\(").unwrap();
-            static ref CLOSE_BRACKET_PATTERN: Regex = Regex::new(r"^\)($|[\)\s])").unwrap();
+            static ref CLOSE_BRACKET_PATTERN: Regex = Regex::new(r"^\)($|[\s\)\]])").unwrap();
+            static ref OPEN_SQUARE_PATTERN: Regex = Regex::new(r"^\[").unwrap();
+            static ref CLOSE_SQUARE_PATTERN: Regex = Regex::new(r"^\]($|[\s\)\]])").unwrap();
             static ref WHITESPACE_PATTERN: Regex = Regex::new(r"^\s+").unwrap();
         }
         if LET_PATTERN.is_match(input) {
@@ -39,11 +43,14 @@ impl Token {
             Ok((Some(Token::OpenBracket), 1))
         } else if CLOSE_BRACKET_PATTERN.is_match(input) {
             Ok((Some(Token::CloseBracket), 1))
+        } else if OPEN_SQUARE_PATTERN.is_match(input) {
+            Ok((Some(Token::OpenSquare), 1))
+        } else if CLOSE_SQUARE_PATTERN.is_match(input) {
+            Ok((Some(Token::CloseSquare), 1))
         } else if let Some(range) = WHITESPACE_PATTERN.find(input) {
             Ok((None, range.end() - range.start()))
         } else {
-            println!("Token: {}.", input);
-            Err("Unrecognized token".to_string())
+            Err(format!("Unrecognized token: {}", input))
         }
     }
 }

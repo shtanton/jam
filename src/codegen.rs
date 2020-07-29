@@ -1,13 +1,13 @@
+use crate::parse::{Expr, ExprKind, Type};
+use im::HashMap;
 use llvm_sys::bit_writer::LLVMWriteBitcodeToFile;
 use llvm_sys::core::{
     LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMBuildCall, LLVMBuildRet, LLVMConstInt,
     LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMFunctionType, LLVMIntTypeInContext,
     LLVMPositionBuilderAtEnd, LLVMSetTarget,
 };
-use llvm_sys::{LLVMBuilder, LLVMContext, LLVMModule, LLVMValue, LLVMType};
+use llvm_sys::{LLVMBuilder, LLVMContext, LLVMModule, LLVMType, LLVMValue};
 use std::ptr;
-use im::HashMap;
-use crate::parse::{Expr, ExprKind, Type};
 
 macro_rules! c_str {
     ($s:expr) => {
@@ -25,13 +25,17 @@ impl Value {
     fn typ(&self) -> Result<*mut LLVMType, String> {
         if let Value::Type(typ) = self {
             Ok(*typ)
-        } else {Err("Value is not a type".to_string())}
+        } else {
+            Err("Value is not a type".to_string())
+        }
     }
 
     fn value(&self) -> Result<*mut LLVMValue, String> {
         if let Value::Value(value) = self {
             Ok(*value)
-        } else {Err("Type is not a value".to_string())}
+        } else {
+            Err("Type is not a value".to_string())
+        }
     }
 }
 
@@ -41,18 +45,31 @@ pub struct CodeGen {
 
 impl CodeGen {
     fn get_type(&self, typ: Type) -> Result<*mut LLVMType, String> {
-        self.variables.get(&typ.id()).ok_or("Type not found".to_string())?.typ()
+        self.variables
+            .get(&typ.id())
+            .ok_or("Type not found".to_string())?
+            .typ()
     }
 
     fn get_variable_value(&self, value: u64) -> Result<*mut LLVMValue, String> {
-        self.variables.get(&value).ok_or("Variable not found".to_string())?.value()
+        self.variables
+            .get(&value)
+            .ok_or("Variable not found".to_string())?
+            .value()
     }
 
-    fn gen_expr(&mut self, expr: Expr, builder: *mut LLVMBuilder) -> Result<*mut LLVMValue, String> {
+    fn gen_expr(
+        &mut self,
+        expr: Expr,
+        builder: *mut LLVMBuilder,
+    ) -> Result<*mut LLVMValue, String> {
         match expr.kind {
-            ExprKind::IntegerLiteral(num) => Ok(unsafe { LLVMConstInt(self.get_type(expr.typ)?, num as u64, 1) }),
-            ExprKind::Identifier(_) => {
-                Err("identifiers as expressions isn't implemented yet".to_string())
+            ExprKind::IntegerLiteral(num) => {
+                Ok(unsafe { LLVMConstInt(self.get_type(expr.typ)?, num as u64, 1) })
+            }
+            ExprKind::Identifier(id) => {
+                let value = self.get_variable_value(id)?;
+                Ok(value)
             }
             ExprKind::FunctionCall {
                 function,
@@ -82,22 +99,21 @@ impl CodeGen {
                 }
                 let value = self.gen_expr(*body, builder)?;
                 Ok(value)
-            },
+            }
         }
     }
 
-    pub fn codegen(ast: Expr, variables: HashMap<u64, Value>, context: *mut LLVMContext, module: *mut LLVMModule) {
-        let mut codegen = CodeGen {
-            variables,
-        };
+    pub fn codegen(
+        ast: Expr,
+        variables: HashMap<u64, Value>,
+        context: *mut LLVMContext,
+        module: *mut LLVMModule,
+    ) {
+        let mut codegen = CodeGen { variables };
         unsafe {
             let builder = LLVMCreateBuilderInContext(context);
 
-            //let void_type = LLVMVoidTypeInContext(context);
-            //let i8_type = LLVMIntTypeInContext(context, 8);
-            //let i8_pointer_type = LLVMPointerType(i8_type, 0);
             let i32_type = LLVMIntTypeInContext(context, 32);
-            let zero_i32 = LLVMConstInt(i32_type, 0, 1);
 
             //let puts_func_type = LLVMFunctionType(i32_type, [i8_pointer_type].as_ptr() as *mut _, 1, 0);
             //let puts_func = LLVMAddFunction(module, c_str!("puts"), puts_func_type);
