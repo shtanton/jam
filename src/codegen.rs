@@ -75,7 +75,14 @@ impl CodeGen {
                 };
                 Ok(value)
             }
-            ExprKind::Let { defs, body } => Err("Codegen for let not implemented yet".to_string()),
+            ExprKind::Let { defs, body } => {
+                for (id, expr) in defs.into_iter() {
+                    let value = Value::Value(self.gen_expr(expr, builder)?);
+                    self.variables.insert(id, value);
+                }
+                let value = self.gen_expr(*body, builder)?;
+                Ok(value)
+            },
         }
     }
 
