@@ -100,6 +100,7 @@ impl CodeGen {
                 let value = self.gen_expr(*body, builder)?;
                 Ok(value)
             }
+            ExprKind::Fn { params, body } => Err("fn not implemented yet".to_string()),
         }
     }
 

@@ -1,9 +1,10 @@
 use lazy_static::lazy_static;
 use regex::Regex;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Token {
     Let,
+    Fn,
     Identifier(String),
     IntegerLiteral(i64),
     OpenBracket,
@@ -16,6 +17,7 @@ impl Token {
     fn get_next_token(input: &str) -> Result<(Option<Token>, usize), String> {
         lazy_static! {
             static ref LET_PATTERN: Regex = Regex::new(r"^let($|[\s\)\]])").unwrap();
+            static ref FN_PATTERN: Regex = Regex::new(r"^fn($|[\s\)\]])").unwrap();
             static ref IDENTIFIER_PATTERN: Regex =
                 Regex::new(r"^([A-Za-z_+-/*][A-Za-z0-9_+-/*]*)").unwrap();
             static ref INTEGER_LITERAL_PATTERN: Regex =
@@ -28,6 +30,8 @@ impl Token {
         }
         if LET_PATTERN.is_match(input) {
             Ok((Some(Token::Let), 3))
+        } else if FN_PATTERN.is_match(input) {
+            Ok((Some(Token::Fn), 2))
         } else if let Some(captures) = INTEGER_LITERAL_PATTERN.captures(input) {
             let value: i64 = captures.get(1).unwrap().as_str().parse().unwrap();
             let range = captures.get(1).unwrap();
