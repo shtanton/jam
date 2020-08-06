@@ -193,7 +193,7 @@ impl Parser {
             return Err("Expected ) found something else".to_string());
         }
         Ok(Expr {
-            typ: return_type.clone(),
+            typ: typ.clone(),
             kind: ExprKind::Fn {
                 params: args,
                 body: Box::new(body),
@@ -384,7 +384,7 @@ impl Parser {
     }
 
     pub fn parse(tokens: impl Iterator<Item = Token>, env: Env) -> Result<Expr, String> {
-        let next_variable_id = env.variables.len() as u64;
+        let next_variable_id = crate::stdlib::LOWEST_USER_VAR_ID;
         let mut parser = Parser { next_variable_id };
 
         parser.parse_expr(&mut tokens.peekable(), env.get("i32")?.typ()?, &env)

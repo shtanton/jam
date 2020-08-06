@@ -4,7 +4,7 @@ use llvm_sys::bit_writer::LLVMWriteBitcodeToFile;
 use llvm_sys::core::{
     LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMBuildCall, LLVMBuildRet, LLVMConstInt,
     LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMFunctionType, LLVMIntTypeInContext,
-    LLVMPositionBuilderAtEnd, LLVMSetTarget,
+    LLVMPositionBuilderAtEnd, LLVMSetTarget, LLVMGetParam, LLVMDumpType,
 };
 use llvm_sys::{LLVMBuilder, LLVMContext, LLVMModule, LLVMType, LLVMValue};
 use std::ptr;
@@ -41,14 +41,28 @@ impl Value {
 
 pub struct CodeGen {
     variables: HashMap<u64, Value>,
+    module: *mut LLVMModule,
+    context: *mut LLVMContext,
 }
 
 impl CodeGen {
-    fn get_type(&self, typ: Type) -> Result<*mut LLVMType, String> {
-        self.variables
-            .get(&typ.id())
-            .ok_or("Type not found".to_string())?
-            .typ()
+    fn get_type(&self, typ: &Type) -> Result<*mut LLVMType, String> {
+        match typ {
+            Type::Other(id) => self.variables.get(id).ok_or("Type not found".to_string())?.typ(),
+            Type::Function {id, args, ret} => {
+                if let Some(typ) = self.variables.get(id) {
+                    typ.typ()
+                } else {
+                    let llvm_args: Result<Vec<_>, _> = args.iter().map(|arg| self.get_type(arg)).collect();
+                    let llvm_args = llvm_args?;
+                    let llvm_ret = self.get_type(ret.as_ref())?;
+                    let llvm_typ = unsafe {
+                        LLVMFunctionType(llvm_ret, llvm_args.as_ptr() as *mut _, args.len() as u32, 0)
+                    };
+                    Ok(llvm_typ)
+                }
+            }
+        }
     }
 
     fn get_variable_value(&self, value: u64) -> Result<*mut LLVMValue, String> {
@@ -65,7 +79,7 @@ impl CodeGen {
     ) -> Result<*mut LLVMValue, String> {
         match expr.kind {
             ExprKind::IntegerLiteral(num) => {
-                Ok(unsafe { LLVMConstInt(self.get_type(expr.typ)?, num as u64, 1) })
+                Ok(unsafe { LLVMConstInt(self.get_type(&expr.typ)?, num as u64, 1) })
             }
             ExprKind::Identifier(id) => {
                 let value = self.get_variable_value(id)?;
@@ -100,7 +114,23 @@ impl CodeGen {
                 let value = self.gen_expr(*body, builder)?;
                 Ok(value)
             }
-            ExprKind::Fn { params, body } => Err("fn not implemented yet".to_string()),
+            ExprKind::Fn { params, body } => {
+                let typ = self.get_type(&expr.typ)?;
+                let fun = unsafe {
+                    let fun = LLVMAddFunction(self.module, c_str!("fun"), typ);
+                    let block = LLVMAppendBasicBlockInContext(self.context, fun, c_str!("fun"));
+                    let fun_builder = LLVMCreateBuilderInContext(self.context);
+                    LLVMPositionBuilderAtEnd(fun_builder, block);
+                    for (index, param) in params.into_iter().enumerate() {
+                        let value = LLVMGetParam(fun, index as u32);
+                        self.variables.insert(param, Value::Value(value));
+                    }
+                    let return_expr = self.gen_expr(*body, fun_builder)?;
+                    LLVMBuildRet(fun_builder, return_expr);
+                    fun
+                };
+                Ok(fun)
+            }
         }
     }
 
@@ -110,7 +140,7 @@ impl CodeGen {
         context: *mut LLVMContext,
         module: *mut LLVMModule,
     ) {
-        let mut codegen = CodeGen { variables };
+        let mut codegen = CodeGen { variables, module, context };
         unsafe {
             let builder = LLVMCreateBuilderInContext(context);
 

@@ -18,7 +18,9 @@ pub const ADD_FUNC_ID: u64 = 0;
 pub const SUB_FUNC_ID: u64 = 1;
 pub const I32_TYPE_ID: u64 = 2;
 pub const ADD_FUNC_TYPE_ID: u64 = 3;
-pub const SUB_FUNC_TYPE_ID: u64 = 3;
+pub const SUB_FUNC_TYPE_ID: u64 = 4;
+
+pub const LOWEST_USER_VAR_ID: u64 = 5;
 
 pub fn stdlib_env() -> Env {
     let mut env = Env::default();
