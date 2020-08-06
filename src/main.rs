@@ -11,7 +11,7 @@ use llvm_sys::core::{
 };
 use std::env;
 use std::fs::File;
-use std::io::{Read};
+use std::io::Read;
 
 macro_rules! c_str {
     ($s:expr) => {
@@ -31,7 +31,9 @@ fn main() {
     };
     let mut source = String::new();
     let mut input_file = File::open(input_path).expect("Error opening file");
-    input_file.read_to_string(&mut source).expect("Error reading file");
+    input_file
+        .read_to_string(&mut source)
+        .expect("Error reading file");
 
     let tokens: Vec<lex::Token> = lex::lex(source).map(|res| res.unwrap()).collect();
     let env = stdlib::stdlib_env();

@@ -1,9 +1,8 @@
-use std::iter::Peekable;
-
-use im::HashMap;
-
 use crate::lex::Token;
-use crate::stdlib::I32_TYPE_ID;
+use crate::stdlib::INT_TYPE_ID;
+use im::HashMap;
+use std::fmt;
+use std::iter::Peekable;
 
 #[derive(Debug)]
 pub enum ExprKind {
@@ -66,7 +65,7 @@ impl Type {
     /// True if the type is an integer type
     pub fn is_integer(&self) -> bool {
         if let Type::Other(id) = self {
-            *id == I32_TYPE_ID
+            *id == INT_TYPE_ID
         } else {
             false
         }
@@ -110,6 +109,28 @@ impl Type {
     }
 }
 
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Type::Other(id) => {
+                write!(f, "{}", id)?;
+            }
+            Type::Function { id, args, ret } => {
+                write!(f, "{}: ([", id)?;
+                let mut iter = args.iter();
+                if let Some(first) = iter.next() {
+                    write!(f, "{}", first)?;
+                    for arg in iter {
+                        write!(f, ", {}", arg)?;
+                    }
+                }
+                write!(f, "] {})", ret)?;
+            }
+        };
+        Ok(())
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Env {
     pub variables: HashMap<String, Variable>,
@@ -139,20 +160,14 @@ impl Parser {
     fn parse_fn(
         &mut self,
         tokens: &mut Peekable<impl Iterator<Item = Token>>,
-        typ: &Type,
         env: &Env,
     ) -> Result<Expr, String> {
-        let (arg_types, return_type) = if let Type::Function { args, ret, .. } = typ {
-            (args, ret.as_ref())
-        } else {
-            return Err("Expected some other type, found function".to_string());
-        };
         if tokens.next().ok_or("Expected [ found EOF")? != Token::OpenSquare {
             return Err("Expected [ found something else".to_string());
         }
         let mut next_env = env.clone();
         let mut args = Vec::new();
-        let mut arg_types_iter = arg_types.iter();
+        let mut arg_types = Vec::new();
         while *tokens.peek().ok_or("Expected ] found EOF")? != Token::CloseSquare {
             match tokens.next() {
                 None => {
@@ -173,27 +188,27 @@ impl Parser {
             if tokens.next().ok_or("Expected ) found EOF")? != Token::CloseBracket {
                 return Err("Expected ) found something else".to_string());
             }
-            let expected_type = arg_types_iter
-                .next()
-                .ok_or("Function accepts too many arguments")?;
-            if !typ.accepts(expected_type) {
-                return Err("Parameter type mismatch".to_string());
-            }
+            arg_types.push(typ.clone());
             next_env
                 .variables
                 .insert(identifier, Variable::Value { id, typ });
             args.push(id);
         }
-        if arg_types_iter.next().is_some() {
-            return Err("Function doesn't accept enough arguments".to_string());
-        }
         tokens.next();
-        let body = self.parse_expr(tokens, return_type, &next_env)?;
+        let return_type = self.parse_type(tokens, &next_env)?;
+        let body = self.parse_expr(tokens, &next_env)?;
+        if !return_type.accepts(&body.typ) {
+            return Err(format!("Expected type {} found {}", return_type, body.typ));
+        }
         if tokens.next() != Some(Token::CloseBracket) {
             return Err("Expected ) found something else".to_string());
         }
         Ok(Expr {
-            typ: typ.clone(),
+            typ: Type::Function {
+                id: self.get_variable_id(),
+                args: arg_types,
+                ret: Box::new(body.typ.clone()),
+            },
             kind: ExprKind::Fn {
                 params: args,
                 body: Box::new(body),
@@ -238,7 +253,6 @@ impl Parser {
     fn parse_let(
         &mut self,
         tokens: &mut Peekable<impl Iterator<Item = Token>>,
-        typ: &Type,
         env: &Env,
     ) -> Result<Expr, String> {
         let mut next_env = env.clone();
@@ -260,7 +274,13 @@ impl Parser {
                         return Err("Expected identifier found something else".to_string());
                     };
                     let var_type = self.parse_type(tokens, env)?;
-                    let var_value = self.parse_expr(tokens, &var_type, env)?;
+                    let var_value = self.parse_expr(tokens, env)?;
+                    if !var_type.accepts(&var_value.typ) {
+                        return Err(format!(
+                            "Expected type {} found {}",
+                            var_type, var_value.typ
+                        ));
+                    }
                     match tokens.next() {
                         Some(Token::CloseBracket) => {}
                         _ => return Err("Expected ) found something else".to_string()),
@@ -280,19 +300,18 @@ impl Parser {
             }
         }
         tokens.next();
-        let body = Box::new(self.parse_expr(tokens, typ, &next_env)?);
+        let body = Box::new(self.parse_expr(tokens, &next_env)?);
         tokens.next();
         Ok(Expr {
-            typ: typ.clone(),
+            typ: body.typ.clone(),
             kind: ExprKind::Let { defs, body },
         })
     }
 
-    /// Parses any expression that starts with '('
+    /// Parses any expression that starts with '(', starts after the (
     fn parse_function_call(
         &mut self,
         tokens: &mut Peekable<impl Iterator<Item = Token>>,
-        return_typ: &Type,
         env: &Env,
     ) -> Result<Expr, String> {
         let fn_name = match tokens
@@ -301,10 +320,11 @@ impl Parser {
         {
             Token::Identifier(name) => Ok(name),
             Token::Let => {
-                return self.parse_let(tokens, return_typ, env);
+                let expr = self.parse_let(tokens, env)?;
+                return Ok(expr);
             }
             Token::Fn => {
-                return self.parse_fn(tokens, return_typ, env);
+                return self.parse_fn(tokens, env);
             }
             _ => Err("Expected identifier or keyword, found something else".to_string()),
         }?;
@@ -312,19 +332,22 @@ impl Parser {
             .variables
             .get(fn_name.as_str())
             .ok_or("Function not defined")?;
-        let (param_types, actual_return_type) = match function {
+        let (param_types, return_type) = match function {
             Variable::Type(_) => Err("Expected a function identifier but found a type".to_string()),
             Variable::Value { id, typ } => match typ {
                 Type::Other(_) => Err("Expected a function but found something else".to_string()),
                 Type::Function { args, ret, .. } => Ok((args, ret.as_ref())),
             },
         }?;
-        if !return_typ.accepts(actual_return_type) {
-            return Err("Function returns the wrong type".to_string());
-        }
         let params: Result<Vec<Expr>, String> = param_types
             .into_iter()
-            .map(|typ| self.parse_expr(tokens, &typ, env))
+            .map(|typ| {
+                let expr = self.parse_expr(tokens, env)?;
+                if !typ.accepts(&expr.typ) {
+                    return Err("Argument type doesn't match expected type".to_string());
+                }
+                Ok(expr)
+            })
             .collect();
         if let Some(Token::CloseBracket) = tokens.next() {
             Ok(Expr {
@@ -332,32 +355,25 @@ impl Parser {
                     function: function.id(),
                     params: params?,
                 },
-                typ: return_typ.clone(),
+                typ: return_type.clone(),
             })
         } else {
-            Err("Expected ) found something else".to_string())
+            Err("Too many arguments supplied to function".to_string())
         }
     }
 
     fn parse_expr(
         &mut self,
         tokens: &mut Peekable<impl Iterator<Item = Token>>,
-        typ: &Type,
         env: &Env,
     ) -> Result<Expr, String> {
         match tokens.next() {
             None => Err("Tried to parse an expression from an empty token stream".to_string()),
-            Some(Token::IntegerLiteral(num)) => {
-                if typ.is_integer() {
-                    Ok(Expr {
-                        kind: ExprKind::IntegerLiteral(num),
-                        typ: typ.clone(),
-                    })
-                } else {
-                    Err("Expected integer found something else".to_string())
-                }
-            }
-            Some(Token::OpenBracket) => self.parse_function_call(tokens, typ, env),
+            Some(Token::IntegerLiteral(num)) => Ok(Expr {
+                kind: ExprKind::IntegerLiteral(num),
+                typ: env.get("int")?.typ()?.clone(),
+            }),
+            Some(Token::OpenBracket) => self.parse_function_call(tokens, env),
             Some(Token::CloseBracket) => {
                 Err("Tried to parse expression from close bracket".to_string())
             }
@@ -366,14 +382,10 @@ impl Parser {
             Some(Token::Identifier(name)) => {
                 let variable = env.get(name.as_str())?;
                 if let Variable::Value { id, typ: var_typ } = variable {
-                    if typ.accepts(var_typ) {
-                        Ok(Expr {
-                            kind: ExprKind::Identifier(*id),
-                            typ: var_typ.clone(),
-                        })
-                    } else {
-                        Err("Expected a type and found a different type".to_string())
-                    }
+                    Ok(Expr {
+                        kind: ExprKind::Identifier(*id),
+                        typ: var_typ.clone(),
+                    })
                 } else {
                     Err("Expected value found type".to_string())
                 }
@@ -387,6 +399,10 @@ impl Parser {
         let next_variable_id = crate::stdlib::LOWEST_USER_VAR_ID;
         let mut parser = Parser { next_variable_id };
 
-        parser.parse_expr(&mut tokens.peekable(), env.get("i32")?.typ()?, &env)
+        let expr = parser.parse_expr(&mut tokens.peekable(), &env)?;
+        if !env.get("int")?.typ()?.accepts(&expr.typ) {
+            return Err("Expected in found something else".to_string());
+        }
+        Ok(expr)
     }
 }

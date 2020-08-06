@@ -1,5 +1,5 @@
 (let [
-    (double ([i32] i32)
-        (fn [(y i32)]
+    (double ([int] int)
+        (fn [(y int)] int
             (+ y y)))]
     (double 6))

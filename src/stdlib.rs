@@ -16,7 +16,7 @@ macro_rules! c_str {
 
 pub const ADD_FUNC_ID: u64 = 0;
 pub const SUB_FUNC_ID: u64 = 1;
-pub const I32_TYPE_ID: u64 = 2;
+pub const INT_TYPE_ID: u64 = 2;
 pub const ADD_FUNC_TYPE_ID: u64 = 3;
 pub const SUB_FUNC_TYPE_ID: u64 = 4;
 
@@ -30,8 +30,8 @@ pub fn stdlib_env() -> Env {
             id: ADD_FUNC_ID,
             typ: Type::Function {
                 id: ADD_FUNC_TYPE_ID,
-                args: vec![Type::Other(I32_TYPE_ID), Type::Other(I32_TYPE_ID)],
-                ret: Box::new(Type::Other(I32_TYPE_ID)),
+                args: vec![Type::Other(INT_TYPE_ID), Type::Other(INT_TYPE_ID)],
+                ret: Box::new(Type::Other(INT_TYPE_ID)),
             },
         },
     );
@@ -41,29 +41,27 @@ pub fn stdlib_env() -> Env {
             id: SUB_FUNC_ID,
             typ: Type::Function {
                 id: SUB_FUNC_TYPE_ID,
-                args: vec![Type::Other(I32_TYPE_ID), Type::Other(I32_TYPE_ID)],
-                ret: Box::new(Type::Other(I32_TYPE_ID)),
+                args: vec![Type::Other(INT_TYPE_ID), Type::Other(INT_TYPE_ID)],
+                ret: Box::new(Type::Other(INT_TYPE_ID)),
             },
         },
     );
     env.variables
-        .insert("i32".to_string(), Variable::Type(Type::Other(I32_TYPE_ID)));
+        .insert("int".to_string(), Variable::Type(Type::Other(INT_TYPE_ID)));
     env
 }
-
-//pub fn stdlib_types(context: *mut LLVMContext, module: *mut LLVMModule) -> HashMap<u64,
 
 pub fn stdlib_vars(context: *mut LLVMContext, module: *mut LLVMModule) -> HashMap<u64, Value> {
     let mut variables = HashMap::default();
     unsafe {
         let builder = LLVMCreateBuilderInContext(context);
 
-        let i32_type = LLVMIntTypeInContext(context, 32);
-        variables.insert(I32_TYPE_ID, Value::Type(i32_type));
+        let int_type = LLVMIntTypeInContext(context, 64);
+        variables.insert(INT_TYPE_ID, Value::Type(int_type));
 
         {
             let add_func_type =
-                LLVMFunctionType(i32_type, [i32_type, i32_type].as_ptr() as *mut _, 2, 0);
+                LLVMFunctionType(int_type, [int_type, int_type].as_ptr() as *mut _, 2, 0);
             let add_func = LLVMAddFunction(module, c_str!("add"), add_func_type);
             let add_block = LLVMAppendBasicBlockInContext(context, add_func, c_str!("add"));
             LLVMPositionBuilderAtEnd(builder, add_block);
@@ -77,7 +75,7 @@ pub fn stdlib_vars(context: *mut LLVMContext, module: *mut LLVMModule) -> HashMa
 
         {
             let sub_func_type =
-                LLVMFunctionType(i32_type, [i32_type, i32_type].as_ptr() as *mut _, 2, 0);
+                LLVMFunctionType(int_type, [int_type, int_type].as_ptr() as *mut _, 2, 0);
             let sub_func = LLVMAddFunction(module, c_str!("sub"), sub_func_type);
             let sub_block = LLVMAppendBasicBlockInContext(context, sub_func, c_str!("sub"));
             LLVMPositionBuilderAtEnd(builder, sub_block);

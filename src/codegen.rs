@@ -3,8 +3,8 @@ use im::HashMap;
 use llvm_sys::bit_writer::LLVMWriteBitcodeToFile;
 use llvm_sys::core::{
     LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMBuildCall, LLVMBuildRet, LLVMConstInt,
-    LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMFunctionType, LLVMIntTypeInContext,
-    LLVMPositionBuilderAtEnd, LLVMSetTarget, LLVMGetParam, LLVMDumpType,
+    LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDumpType, LLVMFunctionType, LLVMGetParam,
+    LLVMIntTypeInContext, LLVMPositionBuilderAtEnd, LLVMSetTarget,
 };
 use llvm_sys::{LLVMBuilder, LLVMContext, LLVMModule, LLVMType, LLVMValue};
 use std::ptr;
@@ -48,16 +48,26 @@ pub struct CodeGen {
 impl CodeGen {
     fn get_type(&self, typ: &Type) -> Result<*mut LLVMType, String> {
         match typ {
-            Type::Other(id) => self.variables.get(id).ok_or("Type not found".to_string())?.typ(),
-            Type::Function {id, args, ret} => {
+            Type::Other(id) => self
+                .variables
+                .get(id)
+                .ok_or("Type not found".to_string())?
+                .typ(),
+            Type::Function { id, args, ret } => {
                 if let Some(typ) = self.variables.get(id) {
                     typ.typ()
                 } else {
-                    let llvm_args: Result<Vec<_>, _> = args.iter().map(|arg| self.get_type(arg)).collect();
+                    let llvm_args: Result<Vec<_>, _> =
+                        args.iter().map(|arg| self.get_type(arg)).collect();
                     let llvm_args = llvm_args?;
                     let llvm_ret = self.get_type(ret.as_ref())?;
                     let llvm_typ = unsafe {
-                        LLVMFunctionType(llvm_ret, llvm_args.as_ptr() as *mut _, args.len() as u32, 0)
+                        LLVMFunctionType(
+                            llvm_ret,
+                            llvm_args.as_ptr() as *mut _,
+                            args.len() as u32,
+                            0,
+                        )
                     };
                     Ok(llvm_typ)
                 }
@@ -140,7 +150,11 @@ impl CodeGen {
         context: *mut LLVMContext,
         module: *mut LLVMModule,
     ) {
-        let mut codegen = CodeGen { variables, module, context };
+        let mut codegen = CodeGen {
+            variables,
+            module,
+            context,
+        };
         unsafe {
             let builder = LLVMCreateBuilderInContext(context);
 
