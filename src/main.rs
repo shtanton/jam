@@ -9,8 +9,9 @@ mod stdlib;
 use llvm_sys::core::{
     LLVMContextCreate, LLVMContextDispose, LLVMDisposeModule, LLVMModuleCreateWithName,
 };
-
 use std::env;
+use std::fs::File;
+use std::io::{Read};
 
 macro_rules! c_str {
     ($s:expr) => {
@@ -21,7 +22,18 @@ macro_rules! c_str {
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    let tokens: Vec<lex::Token> = lex::lex(args[1].clone()).map(|res| res.unwrap()).collect();
+    let input_path = if let Some(path) = args.get(1) {
+        path
+    } else {
+        println!("Usage:");
+        println!("jam source.jam");
+        return;
+    };
+    let mut source = String::new();
+    let mut input_file = File::open(input_path).expect("Error opening file");
+    input_file.read_to_string(&mut source).expect("Error reading file");
+
+    let tokens: Vec<lex::Token> = lex::lex(source).map(|res| res.unwrap()).collect();
     let env = stdlib::stdlib_env();
     let ast = parse::Parser::parse(tokens.into_iter(), env).unwrap();
 
