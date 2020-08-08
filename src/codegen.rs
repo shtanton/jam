@@ -3,8 +3,8 @@ use im::HashMap;
 use llvm_sys::bit_writer::LLVMWriteBitcodeToFile;
 use llvm_sys::core::{
     LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMBuildCall, LLVMBuildRet, LLVMConstInt,
-    LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDumpType, LLVMFunctionType, LLVMGetParam,
-    LLVMIntTypeInContext, LLVMPositionBuilderAtEnd, LLVMSetTarget,
+    LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMFunctionType, LLVMGetParam,
+    LLVMPointerType, LLVMPositionBuilderAtEnd, LLVMSetTarget,
 };
 use llvm_sys::{LLVMBuilder, LLVMContext, LLVMModule, LLVMType, LLVMValue};
 use std::ptr;
@@ -57,8 +57,19 @@ impl CodeGen {
                 if let Some(typ) = self.variables.get(id) {
                     typ.typ()
                 } else {
-                    let llvm_args: Result<Vec<_>, _> =
-                        args.iter().map(|arg| self.get_type(arg)).collect();
+                    let llvm_args: Result<Vec<_>, String> = args
+                        .iter()
+                        .map(|arg| {
+                            if arg.is_function() {
+                                unsafe {
+                                    let typ = self.get_type(arg)?;
+                                    Ok(LLVMPointerType(typ, 0))
+                                }
+                            } else {
+                                self.get_type(arg)
+                            }
+                        })
+                        .collect();
                     let llvm_args = llvm_args?;
                     let llvm_ret = self.get_type(ret.as_ref())?;
                     let llvm_typ = unsafe {
@@ -105,10 +116,11 @@ impl CodeGen {
                     .collect();
                 let params = params?;
                 let len = params.len() as u32;
+                let function = self.get_variable_value(function)?;
                 let value = unsafe {
                     LLVMBuildCall(
                         builder,
-                        self.get_variable_value(function)?,
+                        function,
                         params.as_ptr() as *mut _,
                         len,
                         c_str!("test"),
@@ -131,12 +143,13 @@ impl CodeGen {
                     let block = LLVMAppendBasicBlockInContext(self.context, fun, c_str!("fun"));
                     let fun_builder = LLVMCreateBuilderInContext(self.context);
                     LLVMPositionBuilderAtEnd(fun_builder, block);
-                    for (index, param) in params.into_iter().enumerate() {
+                    for (index, id) in params.into_iter().enumerate() {
                         let value = LLVMGetParam(fun, index as u32);
-                        self.variables.insert(param, Value::Value(value));
+                        self.variables.insert(id, Value::Value(value));
                     }
                     let return_expr = self.gen_expr(*body, fun_builder)?;
                     LLVMBuildRet(fun_builder, return_expr);
+                    LLVMDisposeBuilder(fun_builder);
                     fun
                 };
                 Ok(fun)
@@ -150,6 +163,12 @@ impl CodeGen {
         context: *mut LLVMContext,
         module: *mut LLVMModule,
     ) {
+        let int_type = variables
+            .get(&crate::stdlib::INT_TYPE_ID)
+            .unwrap()
+            .typ()
+            .unwrap();
+
         let mut codegen = CodeGen {
             variables,
             module,
@@ -158,12 +177,10 @@ impl CodeGen {
         unsafe {
             let builder = LLVMCreateBuilderInContext(context);
 
-            let i32_type = LLVMIntTypeInContext(context, 32);
-
             //let puts_func_type = LLVMFunctionType(i32_type, [i8_pointer_type].as_ptr() as *mut _, 1, 0);
             //let puts_func = LLVMAddFunction(module, c_str!("puts"), puts_func_type);
 
-            let main_func_type = LLVMFunctionType(i32_type, ptr::null_mut(), 0, 0);
+            let main_func_type = LLVMFunctionType(int_type, ptr::null_mut(), 0, 0);
             let main_func = LLVMAddFunction(module, c_str!("main"), main_func_type);
             let main_block = LLVMAppendBasicBlockInContext(context, main_func, c_str!("main"));
             LLVMPositionBuilderAtEnd(builder, main_block);
@@ -173,6 +190,7 @@ impl CodeGen {
             LLVMBuildRet(builder, codegen.gen_expr(ast, builder).unwrap());
 
             LLVMSetTarget(module, c_str!("x86_64-pc-linux-gnu"));
+            //LLVMDumpModule(module);
             LLVMWriteBitcodeToFile(module, c_str!("main.bc"));
 
             LLVMDisposeBuilder(builder);

@@ -1,5 +1,4 @@
 use crate::lex::Token;
-use crate::stdlib::INT_TYPE_ID;
 use im::HashMap;
 use std::fmt;
 use std::iter::Peekable;
@@ -62,15 +61,6 @@ pub enum Type {
 }
 
 impl Type {
-    /// True if the type is an integer type
-    pub fn is_integer(&self) -> bool {
-        if let Type::Other(id) = self {
-            *id == INT_TYPE_ID
-        } else {
-            false
-        }
-    }
-
     /// True if typ is a 'subtype' of self, i.e. typ can be used in place of self
     pub fn accepts(&self, typ: &Type) -> bool {
         match (self, typ) {
@@ -105,6 +95,14 @@ impl Type {
         match self {
             Type::Function { id, .. } => *id,
             Type::Other(id) => *id,
+        }
+    }
+
+    pub fn is_function(&self) -> bool {
+        if let Type::Function { .. } = self {
+            true
+        } else {
+            false
         }
     }
 }
@@ -274,7 +272,7 @@ impl Parser {
                         return Err("Expected identifier found something else".to_string());
                     };
                     let var_type = self.parse_type(tokens, env)?;
-                    let var_value = self.parse_expr(tokens, env)?;
+                    let var_value = self.parse_expr(tokens, &next_env)?;
                     if !var_type.accepts(&var_value.typ) {
                         return Err(format!(
                             "Expected type {} found {}",
@@ -334,7 +332,7 @@ impl Parser {
             .ok_or("Function not defined")?;
         let (param_types, return_type) = match function {
             Variable::Type(_) => Err("Expected a function identifier but found a type".to_string()),
-            Variable::Value { id, typ } => match typ {
+            Variable::Value { typ, .. } => match typ {
                 Type::Other(_) => Err("Expected a function but found something else".to_string()),
                 Type::Function { args, ret, .. } => Ok((args, ret.as_ref())),
             },

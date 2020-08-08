@@ -1,5 +1,4 @@
-(let [
-    (double ([int] int)
-        (fn [(y int)] int
-            (+ y y)))]
-    (double 6))
+(let
+    [(with5_6 ([([int int] int)] int)
+        (fn [(f ([int int] int))] int (f 5 6)))]
+    (if false (fn [] int 0) (fn [] int 1)))
