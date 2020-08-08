@@ -3,11 +3,11 @@ use crate::parse::{Env, Type, Variable};
 use im::HashMap;
 use llvm_sys::core::{
     LLVMAddFunction, LLVMAddIncoming, LLVMAppendBasicBlockInContext, LLVMBuildAdd, LLVMBuildBr,
-    LLVMBuildCall, LLVMBuildCondBr, LLVMBuildPhi, LLVMBuildRet, LLVMBuildSub, LLVMConstInt,
-    LLVMCreateBuilderInContext, LLVMFunctionType, LLVMGetParam, LLVMIntTypeInContext,
-    LLVMMoveBasicBlockAfter, LLVMPointerType, LLVMPositionBuilderAtEnd,
+    LLVMBuildCall, LLVMBuildCondBr, LLVMBuildICmp, LLVMBuildPhi, LLVMBuildRet, LLVMBuildSub,
+    LLVMConstInt, LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMFunctionType, LLVMGetParam,
+    LLVMIntTypeInContext, LLVMMoveBasicBlockAfter, LLVMPointerType, LLVMPositionBuilderAtEnd,
 };
-use llvm_sys::{LLVMContext, LLVMModule, LLVMType, LLVMValue};
+use llvm_sys::{LLVMContext, LLVMIntPredicate, LLVMModule, LLVMType, LLVMValue};
 use std::ptr;
 
 macro_rules! c_str {
@@ -27,8 +27,10 @@ pub const IF_BRANCH_TYPE_ID: u64 = 7;
 pub const BOOL_TYPE_ID: u64 = 8;
 pub const TRUE_ID: u64 = 9;
 pub const FALSE_ID: u64 = 10;
+pub const EQUAL_FUNC_ID: u64 = 11;
+pub const EQUAL_FUNC_TYPE_ID: u64 = 12;
 
-pub const LOWEST_USER_VAR_ID: u64 = 11;
+pub const LOWEST_USER_VAR_ID: u64 = 13;
 
 pub fn stdlib_env() -> Env {
     let mut env = Env::default();
@@ -97,6 +99,17 @@ pub fn stdlib_env() -> Env {
             typ: Type::Other(BOOL_TYPE_ID),
         },
     );
+    env.variables.insert(
+        "=".to_string(),
+        Variable::Value {
+            id: EQUAL_FUNC_ID,
+            typ: Type::Function {
+                id: EQUAL_FUNC_TYPE_ID,
+                args: vec![Type::Other(INT_TYPE_ID), Type::Other(INT_TYPE_ID)],
+                ret: Box::new(Type::Other(BOOL_TYPE_ID)),
+            },
+        },
+    );
     env
 }
 
@@ -118,7 +131,7 @@ pub fn stdlib_vars(context: *mut LLVMContext, module: *mut LLVMModule) -> HashMa
             LLVMPositionBuilderAtEnd(builder, add_block);
             let lhs = LLVMGetParam(add_func, 0);
             let rhs = LLVMGetParam(add_func, 1);
-            let result = LLVMBuildAdd(builder, lhs, rhs, c_str!("test"));
+            let result = LLVMBuildAdd(builder, lhs, rhs, c_str!("add"));
             LLVMBuildRet(builder, result);
             variables.insert(ADD_FUNC_ID, Value::Value(add_func));
             variables.insert(ADD_FUNC_TYPE_ID, Value::Type(add_func_type));
@@ -132,7 +145,7 @@ pub fn stdlib_vars(context: *mut LLVMContext, module: *mut LLVMModule) -> HashMa
             LLVMPositionBuilderAtEnd(builder, sub_block);
             let lhs = LLVMGetParam(sub_func, 0);
             let rhs = LLVMGetParam(sub_func, 1);
-            let result = LLVMBuildSub(builder, lhs, rhs, c_str!("test"));
+            let result = LLVMBuildSub(builder, lhs, rhs, c_str!("sub"));
             LLVMBuildRet(builder, result);
             variables.insert(SUB_FUNC_ID, Value::Value(sub_func));
             variables.insert(SUB_FUNC_TYPE_ID, Value::Type(sub_func_type));
@@ -199,6 +212,27 @@ pub fn stdlib_vars(context: *mut LLVMContext, module: *mut LLVMModule) -> HashMa
             variables.insert(TRUE_ID, Value::Value(true_val));
             variables.insert(FALSE_ID, Value::Value(false_val));
         };
+
+        {
+            let equal_func_type =
+                LLVMFunctionType(bool_type, [int_type, int_type].as_ptr() as *mut _, 2, 0);
+            let equal_func = LLVMAddFunction(module, c_str!("equal"), equal_func_type);
+            let equal_block = LLVMAppendBasicBlockInContext(context, equal_func, c_str!("equal"));
+            LLVMPositionBuilderAtEnd(builder, equal_block);
+            let lhs = LLVMGetParam(equal_func, 0);
+            let rhs = LLVMGetParam(equal_func, 1);
+            let result = LLVMBuildICmp(
+                builder,
+                LLVMIntPredicate::LLVMIntEQ,
+                lhs,
+                rhs,
+                c_str!("int_eq"),
+            );
+            LLVMBuildRet(builder, result);
+            variables.insert(EQUAL_FUNC_ID, Value::Value(equal_func));
+            variables.insert(EQUAL_FUNC_TYPE_ID, Value::Type(equal_func_type));
+        };
+        LLVMDisposeBuilder(builder);
     };
     variables
 }

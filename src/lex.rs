@@ -19,7 +19,7 @@ impl Token {
             static ref LET_PATTERN: Regex = Regex::new(r"^let($|[\s\)\]])").unwrap();
             static ref FN_PATTERN: Regex = Regex::new(r"^fn($|[\s\)\]])").unwrap();
             static ref IDENTIFIER_PATTERN: Regex =
-                Regex::new(r"^([A-Za-z_+-/*][A-Za-z0-9_+-/*]*)").unwrap();
+                Regex::new(r"^([A-Za-z_+-/*='][A-Za-z0-9_+-/*=']*)").unwrap();
             static ref INTEGER_LITERAL_PATTERN: Regex =
                 Regex::new(r"^(-?\d+)($|[\s\)\]])").unwrap();
             static ref OPEN_BRACKET_PATTERN: Regex = Regex::new(r"^\(").unwrap();

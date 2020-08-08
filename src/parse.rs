@@ -25,6 +25,7 @@ pub enum ExprKind {
 pub struct Expr {
     pub kind: ExprKind,
     pub typ: Type,
+    pub env: Vec<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -195,6 +196,14 @@ impl Parser {
         tokens.next();
         let return_type = self.parse_type(tokens, &next_env)?;
         let body = self.parse_expr(tokens, &next_env)?;
+        let body_env: Vec<_> = body.env.iter().map(|id| *id).filter(|env_id| {
+            for arg in args.iter() {
+                if *env_id == *arg {
+                    return false;
+                }
+            }
+            true
+        }).collect();
         if !return_type.accepts(&body.typ) {
             return Err(format!("Expected type {} found {}", return_type, body.typ));
         }
@@ -211,6 +220,7 @@ impl Parser {
                 params: args,
                 body: Box::new(body),
             },
+            env: body_env,
         })
     }
 
@@ -272,6 +282,16 @@ impl Parser {
                         return Err("Expected identifier found something else".to_string());
                     };
                     let var_type = self.parse_type(tokens, env)?;
+                    let id = self.get_variable_id();
+                    if var_type.is_function() {
+                        next_env.variables.insert(
+                            identifier.clone(),
+                            Variable::Value {
+                                id,
+                                typ: var_type.clone(),
+                            },
+                        );
+                    }
                     let var_value = self.parse_expr(tokens, &next_env)?;
                     if !var_type.accepts(&var_value.typ) {
                         return Err(format!(
@@ -283,10 +303,11 @@ impl Parser {
                         Some(Token::CloseBracket) => {}
                         _ => return Err("Expected ) found something else".to_string()),
                     };
-                    let id = self.get_variable_id();
-                    next_env
-                        .variables
-                        .insert(identifier, Variable::Value { id, typ: var_type });
+                    if !var_type.is_function() {
+                        next_env
+                            .variables
+                            .insert(identifier, Variable::Value { id, typ: var_type });
+                    }
                     defs.push((id, var_value));
                 }
                 None => {
@@ -299,10 +320,19 @@ impl Parser {
         }
         tokens.next();
         let body = Box::new(self.parse_expr(tokens, &next_env)?);
+        let body_env: Vec<_> = body.env.iter().map(|id| *id).filter(|env_id| {
+            for def in defs.iter() {
+                if def.0 == *env_id {
+                    return false;
+                }
+            }
+            true
+        }).collect();
         tokens.next();
         Ok(Expr {
             typ: body.typ.clone(),
             kind: ExprKind::Let { defs, body },
+            env: body_env,
         })
     }
 
@@ -347,13 +377,20 @@ impl Parser {
                 Ok(expr)
             })
             .collect();
+        let params = params?;
+        let mut body_env = params.iter().flat_map(|param| {
+            param.env.iter()
+        }).map(|id| *id).collect::<Vec<_>>();
+        body_env.sort();
+        body_env.dedup();
         if let Some(Token::CloseBracket) = tokens.next() {
             Ok(Expr {
                 kind: ExprKind::FunctionCall {
                     function: function.id(),
-                    params: params?,
+                    params: params,
                 },
                 typ: return_type.clone(),
+                env: body_env,
             })
         } else {
             Err("Too many arguments supplied to function".to_string())
@@ -370,6 +407,7 @@ impl Parser {
             Some(Token::IntegerLiteral(num)) => Ok(Expr {
                 kind: ExprKind::IntegerLiteral(num),
                 typ: env.get("int")?.typ()?.clone(),
+                env: Vec::new(),
             }),
             Some(Token::OpenBracket) => self.parse_function_call(tokens, env),
             Some(Token::CloseBracket) => {
@@ -383,6 +421,7 @@ impl Parser {
                     Ok(Expr {
                         kind: ExprKind::Identifier(*id),
                         typ: var_typ.clone(),
+                        env: vec![*id],
                     })
                 } else {
                     Err("Expected value found type".to_string())
