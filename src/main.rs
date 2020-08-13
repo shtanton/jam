@@ -1,7 +1,7 @@
 extern crate im;
 extern crate lazy_static;
 extern crate llvm_sys;
-mod codegen;
+//mod codegen;
 mod lex;
 mod parse;
 mod stdlib;
@@ -38,14 +38,15 @@ fn main() {
     let tokens: Vec<lex::Token> = lex::lex(source).map(|res| res.unwrap()).collect();
     let env = stdlib::stdlib_env();
     let ast = parse::Parser::parse(tokens.into_iter(), env).unwrap();
+    println!("{:#?}", ast);
 
-    unsafe {
+    /*unsafe {
         let context = LLVMContextCreate();
         let module = LLVMModuleCreateWithName(c_str!("main"));
 
-        codegen::CodeGen::codegen(ast, stdlib::stdlib_vars(context, module), context, module);
+        codegen::CodeGen::codegen(ast, context, module);
 
         LLVMDisposeModule(module);
         LLVMContextDispose(context);
-    }
+    }*/
 }
