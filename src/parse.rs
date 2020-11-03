@@ -217,7 +217,6 @@ impl Parser {
         self.variables.get(&var_id).ok_or("Variable not found".to_string())
     }
 
-    // TODO
     fn accepts(&self, target_id: TypeId, subject_id: TypeId) -> Result<bool, String> {
         let target = self.get_type(target_id)?;
         let subject = self.get_type(subject_id)?;
@@ -279,11 +278,42 @@ impl Parser {
         }
     }
 
-    fn expect_accepts(&mut self, target: TypeId, subject: TypeId) -> Result<(), String> {
+    fn accepts_value(&self, target_id: TypeId, subject_id: TypeId) -> Result<bool, String> {
+        let target = self.get_type(target_id)?;
+        let subject = self.get_type(subject_id)?;
+        match (target, subject) {
+            (Type::AnyType, _) => Ok(true),
+            (Type::Primitive {
+                instance: false,
+                super_type: target_super_type,
+                assertion: target_assertion,
+            }, Type::Primitive {
+                instance: true,
+                super_type: subject_super_type,
+                assertion: subject_assertion,
+            }) => {
+                if target_super_type != subject_super_type {
+                    return Ok(false);
+                }
+                Ok(true)
+            },
+            _ => Ok(false),
+        }
+    }
+
+    fn expect_accepts(&self, target: TypeId, subject: TypeId) -> Result<(), String> {
         if self.accepts(target, subject)? {
             Ok(())
         } else {
             Err("This type isn't valid here...".to_string())
+        }
+    }
+
+    fn expect_accepts_value(&self, target: TypeId, subject: TypeId) -> Result<(), String> {
+        if self.accepts_value(target, subject)? {
+            Ok(())
+        } else {
+            Err("This value isn't valid here...".to_string())
         }
     }
 
@@ -432,10 +462,9 @@ impl Parser {
             let typ = self.get_type(typ_id)?;
             match typ {
                 Type::AnyType | Type::Primitive { instance: false, .. } => {
-                    let subtyp_id = self.get_type_id();
                     // TODO recursion
                     let subtyp = self.parse_type(tokens, env)?;
-                    self.expect_accepts(typ_id, subtyp)?;
+                    self.expect_accepts_value(typ_id, subtyp)?;
                     next_env.variables.insert(identifier, ValueId::Type(subtyp));
                 },
                 _ => {

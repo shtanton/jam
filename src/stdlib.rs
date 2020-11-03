@@ -23,7 +23,7 @@ macro_rules! c_str {
 pub const INT_ID: TypeId = 0;
 pub const BOOL_ID: TypeId = 1;
 pub const ADD_TYPE_ID: TypeId = 2;
-pub const TYPE_ID: TypeId = 3;
+pub const ANYTYPE_ID: TypeId = 3;
 pub const NEXT_TYPE_ID: TypeId = 4;
 
 pub const ADD_FUNC_ID: VariableId = 0;
@@ -50,7 +50,7 @@ pub fn stdparser() -> Parser {
         super_type: SuperType::Bool,
         assertion: SMTValue::Const(SMTConst::Bool(true)),
     });
-    //types.insert(TYPE_ID, Type::
+    types.insert(ANYTYPE_ID, Type::AnyType);
 
     types.insert(ADD_TYPE_ID, Type::Function {
         params: vec![INT_ID, INT_ID],
@@ -68,6 +68,7 @@ pub fn stdenv() -> Env {
     let mut env = Env::default();
     env.variables.insert("int".to_string(), ValueId::Type(INT_ID));
     env.variables.insert("bool".to_string(), ValueId::Type(BOOL_ID));
+    env.variables.insert("anytype".to_string(), ValueId::Type(ANYTYPE_ID));
     env.variables.insert( "+".to_string(), ValueId::Variable(ADD_FUNC_ID), );
     env
 }

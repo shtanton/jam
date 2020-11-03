@@ -1,1 +1,1 @@
-(let [(moreint type int) (x int 5)] x)
+(let [(moreint anytype int) (x int 5)] x)
