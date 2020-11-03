@@ -66,7 +66,7 @@ impl PartialOrd for Variable {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum SuperType {
     Int,
     Bool,
@@ -213,16 +213,74 @@ impl Parser {
     }
 
     fn get_variable(&self, var_id: VariableId) -> Result<&Variable, String> {
+        println!("Variable Id: {}", var_id);
         self.variables.get(&var_id).ok_or("Variable not found".to_string())
     }
 
     // TODO
-    fn accepts(&mut self, target: TypeId, subject: TypeId) -> bool {
-        target == subject
+    fn accepts(&self, target_id: TypeId, subject_id: TypeId) -> Result<bool, String> {
+        let target = self.get_type(target_id)?;
+        let subject = self.get_type(subject_id)?;
+        match (target, subject) {
+            (Type::Function {
+                params: target_params,
+                ret: target_ret,
+            }, Type::Function {
+                params: subject_params,
+                ret: subject_ret,
+            }) => {
+                let mut param_pairs = target_params
+                    .iter()
+                    .copied()
+                    .zip(subject_params.iter().copied());
+                while let Some((target_param, subject_param)) = param_pairs.next() {
+                    if !self.accepts(subject_param, target_param)? {
+                        return Ok(false);
+                    }
+                }
+                self.accepts(*target_ret, *subject_ret)
+            },
+            (Type::AnyType, Type::AnyType) => Ok(true),
+            (Type::AnyType, Type::Primitive {
+                instance: false,
+                ..
+            }) => Ok(true),
+            (Type::Primitive {
+                instance: false,
+                super_type: target_super_type,
+                assertion: target_assertion,
+            }, Type::Primitive {
+                instance: false,
+                super_type: subject_super_type,
+                assertion: subject_assertion,
+            }) => {
+                // TODO
+                if target_super_type != subject_super_type {
+                    return Ok(false);
+                }
+                Ok(true)
+            }
+            (Type::Primitive {
+                instance: true,
+                super_type: target_super_type,
+                assertion: target_assertion,
+            }, Type::Primitive {
+                instance: true,
+                super_type: subject_super_type,
+                assertion: subject_assertion,
+            }) => {
+                // TODO
+                if target_super_type != subject_super_type {
+                    return Ok(false);
+                }
+                Ok(true)
+            },
+            _ => Ok(false),
+        }
     }
 
     fn expect_accepts(&mut self, target: TypeId, subject: TypeId) -> Result<(), String> {
-        if self.accepts(target, subject) {
+        if self.accepts(target, subject)? {
             Ok(())
         } else {
             Err("This type isn't valid here...".to_string())
@@ -390,6 +448,7 @@ impl Parser {
                     let var_value = self.parse_expr(tokens, env)?;
                     self.expect_accepts(typ_id, var_value.typ)?;
                     next_env.variables.insert(identifier, ValueId::Variable(var_id));
+                    self.variables.insert(var_id, variable);
                     defs.push((var_id, var_value));
                 },
             }
