@@ -36,8 +36,7 @@ fn main() {
         .expect("Error reading file");
 
     let tokens: Vec<lex::Token> = lex::lex(source).map(|res| res.unwrap()).collect();
-    let env = stdlib::stdlib_env();
-    let ast = parse::Parser::parse(tokens.into_iter(), env).unwrap();
+    let ast = stdlib::stdparser().parse(tokens.into_iter(), stdlib::stdenv()).unwrap();
     println!("{:#?}", ast);
 
     /*unsafe {

@@ -1,5 +1,5 @@
 //use crate::codegen::Value;
-use crate::parse::{ComptimeExpr, Env, Type, Variable};
+use crate::parse::{Env, Type, Variable, TypeId, VariableId, Parser, SuperType, SMTValue, SMTConst, SMTFunction, ValueId};
 use im::HashMap as ImHashMap;
 use llvm_sys::core::{
     LLVMAddFunction, LLVMAddIncoming, LLVMAppendBasicBlockInContext, LLVMBuildAdd,
@@ -20,21 +20,52 @@ macro_rules! c_str {
     };
 }
 
-pub const INT_ID: u64 = 0;
-pub const BOOL_ID: u64 = 1;
+pub const INT_ID: TypeId = 0;
+pub const BOOL_ID: TypeId = 1;
+pub const ADD_TYPE_ID: TypeId = 2;
+pub const NEXT_TYPE_ID: TypeId = 3;
 
-pub const ADD_FUNC_ID: u64 = 0;
-pub const SUB_FUNC_ID: u64 = 1;
-pub const INT_TYPE_ID: u64 = 2;
-pub const IF_FUNC_ID: u64 = 3;
-pub const BOOL_TYPE_ID: u64 = 4;
-pub const TRUE_ID: u64 = 5;
-pub const FALSE_ID: u64 = 6;
-pub const EQUAL_FUNC_ID: u64 = 7;
+pub const ADD_FUNC_ID: VariableId = 0;
+pub const SUB_FUNC_ID: VariableId = 1;
+pub const INT_TYPE_ID: VariableId = 2;
+pub const IF_FUNC_ID: VariableId = 3;
+pub const BOOL_TYPE_ID: VariableId = 4;
+pub const TRUE_ID: VariableId = 5;
+pub const FALSE_ID: VariableId = 6;
+pub const EQUAL_FUNC_ID: VariableId = 7;
+pub const NEXT_VARIABLE_ID: VariableId = 9;
 
-pub const LOWEST_USER_VAR_ID: u64 = 9;
+pub fn stdparser() -> Parser {
+    let mut variables = HashMap::new();
+    let mut types = HashMap::new();
 
-pub fn stdlib_env() -> Env {
+    types.insert(INT_ID, Type::Primitive {
+        instance: true,
+        super_type: SuperType::Int,
+        assertion: SMTValue::Const(SMTConst::Bool(true)),
+    });
+
+    types.insert(ADD_TYPE_ID, Type::Function {
+        params: vec![INT_ID, INT_ID],
+        ret: INT_ID,
+    });
+
+    variables.insert(ADD_FUNC_ID, Variable {
+        id: ADD_FUNC_ID,
+        typ: ADD_TYPE_ID,
+    });
+
+    Parser::new(NEXT_VARIABLE_ID, NEXT_TYPE_ID, variables, types)
+}
+
+pub fn stdenv() -> Env {
+    let mut env = Env::default();
+    env.variables.insert("int".to_string(), ValueId::Type(INT_ID));
+    env.variables.insert( "+".to_string(), ValueId::Variable(ADD_FUNC_ID), );
+    env
+}
+
+/*pub fn stdlib_env() -> Env {
     let mut env = Env::default();
     env.variables.insert(
         "+".to_string(),
@@ -72,7 +103,7 @@ pub fn stdlib_env() -> Env {
             typ: Type::Type,
         },
     );
-    /*env.variables.insert(
+    env.variables.insert(
         "if".to_string(),
         Variable::Value {
             id: IF_FUNC_ID,
@@ -94,7 +125,7 @@ pub fn stdlib_env() -> Env {
                 ret: Box::new(Type::Other(INT_TYPE_ID)),
             },
         },
-    );*/
+    );
     env.variables.insert(
         "true".to_string(),
         Variable {
@@ -181,7 +212,7 @@ unsafe fn func_to_closure(
     );
     let closure = LLVMConstNamedStruct(closure_type, [val, closure_env].as_ptr() as *mut _, 2);
     (closure, closure_type)
-}
+}*/
 
 /*pub fn stdlib_vars(
     codegen: &crate::codegen::CodeGen,
