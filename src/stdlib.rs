@@ -1,5 +1,8 @@
 //use crate::codegen::Value;
-use crate::parse::{Env, Type, Variable, TypeId, VariableId, Parser, SuperType, SMTValue, SMTConst, SMTFunction, ValueId};
+use crate::parse::{
+    Env, Parser, SMTConst, SMTFunction, SMTValue, SuperType, Type, TypeId, ValueId, Variable,
+    VariableId,
+};
 use im::HashMap as ImHashMap;
 use llvm_sys::core::{
     LLVMAddFunction, LLVMAddIncoming, LLVMAppendBasicBlockInContext, LLVMBuildAdd,
@@ -40,36 +43,52 @@ pub fn stdparser() -> Parser {
     let mut variables = HashMap::new();
     let mut types = HashMap::new();
 
-    types.insert(INT_ID, Type::Primitive {
-        instance: true,
-        super_type: SuperType::Int,
-        assertion: SMTValue::Const(SMTConst::Bool(true)),
-    });
-    types.insert(BOOL_ID, Type::Primitive {
-        instance: true,
-        super_type: SuperType::Bool,
-        assertion: SMTValue::Const(SMTConst::Bool(true)),
-    });
+    types.insert(
+        INT_ID,
+        Type::Primitive {
+            instance: true,
+            super_type: SuperType::Int,
+            assertion: SMTValue::Const(SMTConst::Bool(true)),
+        },
+    );
+    types.insert(
+        BOOL_ID,
+        Type::Primitive {
+            instance: true,
+            super_type: SuperType::Bool,
+            assertion: SMTValue::Const(SMTConst::Bool(true)),
+        },
+    );
     types.insert(ANYTYPE_ID, Type::AnyType);
 
-    types.insert(ADD_TYPE_ID, Type::Function {
-        params: vec![INT_ID, INT_ID],
-        ret: INT_ID,
-    });
-    variables.insert(ADD_FUNC_ID, Variable {
-        id: ADD_FUNC_ID,
-        typ: ADD_TYPE_ID,
-    });
+    types.insert(
+        ADD_TYPE_ID,
+        Type::Function {
+            params: vec![INT_ID, INT_ID],
+            ret: INT_ID,
+        },
+    );
+    variables.insert(
+        ADD_FUNC_ID,
+        Variable {
+            id: ADD_FUNC_ID,
+            typ: ADD_TYPE_ID,
+        },
+    );
 
     Parser::new(NEXT_VARIABLE_ID, NEXT_TYPE_ID, variables, types)
 }
 
 pub fn stdenv() -> Env {
     let mut env = Env::default();
-    env.variables.insert("int".to_string(), ValueId::Type(INT_ID));
-    env.variables.insert("bool".to_string(), ValueId::Type(BOOL_ID));
-    env.variables.insert("anytype".to_string(), ValueId::Type(ANYTYPE_ID));
-    env.variables.insert( "+".to_string(), ValueId::Variable(ADD_FUNC_ID), );
+    env.variables
+        .insert("int".to_string(), ValueId::Type(INT_ID));
+    env.variables
+        .insert("bool".to_string(), ValueId::Type(BOOL_ID));
+    env.variables
+        .insert("anytype".to_string(), ValueId::Type(ANYTYPE_ID));
+    env.variables
+        .insert("+".to_string(), ValueId::Variable(ADD_FUNC_ID));
     env
 }
 

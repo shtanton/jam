@@ -140,7 +140,9 @@ impl fmt::Display for Type {
                 write!(f, "] {})", ret)?;
             }
             Type::Primitive {
-                instance, super_type, ..
+                instance,
+                super_type,
+                ..
             } => {
                 if *instance {
                     write!(f, "{}", super_type)?;
@@ -213,21 +215,25 @@ impl Parser {
     }
 
     fn get_variable(&self, var_id: VariableId) -> Result<&Variable, String> {
-        println!("Variable Id: {}", var_id);
-        self.variables.get(&var_id).ok_or("Variable not found".to_string())
+        self.variables
+            .get(&var_id)
+            .ok_or("Variable not found".to_string())
     }
 
     fn accepts(&self, target_id: TypeId, subject_id: TypeId) -> Result<bool, String> {
         let target = self.get_type(target_id)?;
         let subject = self.get_type(subject_id)?;
         match (target, subject) {
-            (Type::Function {
-                params: target_params,
-                ret: target_ret,
-            }, Type::Function {
-                params: subject_params,
-                ret: subject_ret,
-            }) => {
+            (
+                Type::Function {
+                    params: target_params,
+                    ret: target_ret,
+                },
+                Type::Function {
+                    params: subject_params,
+                    ret: subject_ret,
+                },
+            ) => {
                 let mut param_pairs = target_params
                     .iter()
                     .copied()
@@ -238,42 +244,50 @@ impl Parser {
                     }
                 }
                 self.accepts(*target_ret, *subject_ret)
-            },
+            }
             (Type::AnyType, Type::AnyType) => Ok(true),
-            (Type::AnyType, Type::Primitive {
-                instance: false,
-                ..
-            }) => Ok(true),
-            (Type::Primitive {
-                instance: false,
-                super_type: target_super_type,
-                assertion: target_assertion,
-            }, Type::Primitive {
-                instance: false,
-                super_type: subject_super_type,
-                assertion: subject_assertion,
-            }) => {
+            (
+                Type::AnyType,
+                Type::Primitive {
+                    instance: false, ..
+                },
+            ) => Ok(true),
+            (
+                Type::Primitive {
+                    instance: false,
+                    super_type: target_super_type,
+                    assertion: target_assertion,
+                },
+                Type::Primitive {
+                    instance: false,
+                    super_type: subject_super_type,
+                    assertion: subject_assertion,
+                },
+            ) => {
                 // TODO
                 if target_super_type != subject_super_type {
                     return Ok(false);
                 }
                 Ok(true)
             }
-            (Type::Primitive {
-                instance: true,
-                super_type: target_super_type,
-                assertion: target_assertion,
-            }, Type::Primitive {
-                instance: true,
-                super_type: subject_super_type,
-                assertion: subject_assertion,
-            }) => {
+            (
+                Type::Primitive {
+                    instance: true,
+                    super_type: target_super_type,
+                    assertion: target_assertion,
+                },
+                Type::Primitive {
+                    instance: true,
+                    super_type: subject_super_type,
+                    assertion: subject_assertion,
+                },
+            ) => {
                 // TODO
                 if target_super_type != subject_super_type {
                     return Ok(false);
                 }
                 Ok(true)
-            },
+            }
             _ => Ok(false),
         }
     }
@@ -283,20 +297,23 @@ impl Parser {
         let subject = self.get_type(subject_id)?;
         match (target, subject) {
             (Type::AnyType, _) => Ok(true),
-            (Type::Primitive {
-                instance: false,
-                super_type: target_super_type,
-                assertion: target_assertion,
-            }, Type::Primitive {
-                instance: true,
-                super_type: subject_super_type,
-                assertion: subject_assertion,
-            }) => {
+            (
+                Type::Primitive {
+                    instance: false,
+                    super_type: target_super_type,
+                    assertion: target_assertion,
+                },
+                Type::Primitive {
+                    instance: true,
+                    super_type: subject_super_type,
+                    assertion: subject_assertion,
+                },
+            ) => {
                 if target_super_type != subject_super_type {
                     return Ok(false);
                 }
                 Ok(true)
-            },
+            }
             _ => Ok(false),
         }
     }
@@ -343,7 +360,11 @@ impl Parser {
 
     /// Parse a function definition, starting immediately after the fn keyword and ending after the )
     /// (fn [(x int) (y int)] int (+ x y))
-    fn parse_fn(&mut self, tokens: &mut Peekable<impl Iterator<Item = Token>>, env: &Env) -> Result<Expr, String> {
+    fn parse_fn(
+        &mut self,
+        tokens: &mut Peekable<impl Iterator<Item = Token>>,
+        env: &Env,
+    ) -> Result<Expr, String> {
         expect_token(tokens, Token::OpenSquare)?;
         let mut next_env = env.clone();
         let mut params = Vec::new();
@@ -358,11 +379,16 @@ impl Parser {
             let var_id = self.get_variable_id();
             let typ_id = self.parse_type(tokens, env)?;
             expect_token(tokens, Token::CloseBracket)?;
-            self.variables.insert(var_id, Variable {
-                id: var_id,
-                typ: typ_id,
-            });
-            next_env.variables.insert(identifier, ValueId::Variable(var_id));
+            self.variables.insert(
+                var_id,
+                Variable {
+                    id: var_id,
+                    typ: typ_id,
+                },
+            );
+            next_env
+                .variables
+                .insert(identifier, ValueId::Variable(var_id));
             params.push(var_id);
             param_types.push(typ_id);
         }
@@ -370,6 +396,7 @@ impl Parser {
         let return_type = self.parse_type(tokens, env)?;
         // TODO enable returning types
         let body = self.parse_expr(tokens, &next_env)?;
+        expect_token(tokens, Token::CloseBracket)?;
         let captures: Vec<_> = body
             .env
             .iter()
@@ -385,10 +412,13 @@ impl Parser {
             .collect();
         self.expect_accepts(return_type, body.typ)?;
         let typ = self.get_type_id();
-        self.types.insert(typ, Type::Function {
-            params: param_types,
-            ret: return_type,
-        });
+        self.types.insert(
+            typ,
+            Type::Function {
+                params: param_types,
+                ret: return_type,
+            },
+        );
         Ok(Expr {
             typ: typ,
             kind: ExprKind::Fn {
@@ -412,27 +442,29 @@ impl Parser {
                 } else {
                     Err("Expected type found something else".to_string())
                 }
-            },
-            // TODO
-            /*Some(Token::OpenBracket) => match tokens.peek() {
+            }
+            Some(Token::OpenBracket) => match tokens.next() {
                 Some(Token::OpenSquare) => {
-                    tokens.next();
-                    let mut arg_types = Vec::new();
+                    let mut param_types = Vec::new();
                     while *tokens.peek().ok_or("Expected ] found EOF")? != Token::CloseSquare {
-                        arg_types.push(self.parse_type(tokens, env)?);
+                        param_types.push(self.parse_type(tokens, env)?);
                     }
                     tokens.next();
-                    let ret = self.parse_type(tokens, env)?;
-                    if tokens.next().ok_or("Expected ) found EOF")? != Token::CloseBracket {
-                        return Err("Expected ) found something else".to_string());
-                    }
-                    Ok(Type::Function {
-                        args: arg_types,
-                        ret: Box::new(ret),
-                    })
+                    let ret_type = self.parse_type(tokens, env)?;
+                    expect_token(tokens, Token::CloseBracket)?;
+                    let typ_id = self.get_type_id();
+                    self.types.insert(
+                        typ_id,
+                        Type::Function {
+                            params: param_types,
+                            ret: ret_type,
+                        },
+                    );
+                    Ok(typ_id)
                 }
-                _ => Err("Expected [ found something else".to_string()),
-            },*/
+                // TODO let, call, import
+                _ => Err("Invalid token following (".to_string()),
+            },
             Some(token) => Err(format!("Expected type found {:?}", token)),
             None => Err("Expected type found nothing".to_string()),
         }
@@ -461,12 +493,15 @@ impl Parser {
             let typ_id = self.parse_type(tokens, env)?;
             let typ = self.get_type(typ_id)?;
             match typ {
-                Type::AnyType | Type::Primitive { instance: false, .. } => {
+                Type::AnyType
+                | Type::Primitive {
+                    instance: false, ..
+                } => {
                     // TODO recursion
                     let subtyp = self.parse_type(tokens, env)?;
                     self.expect_accepts_value(typ_id, subtyp)?;
                     next_env.variables.insert(identifier, ValueId::Type(subtyp));
-                },
+                }
                 _ => {
                     let var_id = self.get_variable_id();
                     let variable = Variable {
@@ -476,10 +511,12 @@ impl Parser {
                     // TODO recursion
                     let var_value = self.parse_expr(tokens, env)?;
                     self.expect_accepts(typ_id, var_value.typ)?;
-                    next_env.variables.insert(identifier, ValueId::Variable(var_id));
+                    next_env
+                        .variables
+                        .insert(identifier, ValueId::Variable(var_id));
                     self.variables.insert(var_id, variable);
                     defs.push((var_id, var_value));
-                },
+                }
             }
             expect_token(tokens, Token::CloseBracket)?;
         }
@@ -589,10 +626,10 @@ impl Parser {
                 let typ = Type::Primitive {
                     instance: true,
                     super_type: SuperType::Int,
-                    assertion: SMTValue::Call(SMTFunction::Equal, Box::new((
-                        SMTValue::This,
-                        SMTValue::Const(SMTConst::Number(num)),
-                    ))),
+                    assertion: SMTValue::Call(
+                        SMTFunction::Equal,
+                        Box::new((SMTValue::This, SMTValue::Const(SMTConst::Number(num)))),
+                    ),
                 };
                 let typ_id = self.get_type_id();
                 self.types.insert(typ_id, typ);
@@ -601,10 +638,12 @@ impl Parser {
                     typ: typ_id,
                     env: Vec::new(),
                 })
-            },
+            }
             Some(Token::StringLiteral(_)) => Err("Strings not yet implemented".to_string()),
             Some(Token::OpenBracket) => self.parse_bracketed_expression(tokens, env),
-            Some(Token::CloseBracket) => Err("Tried to parse expression from close bracket".to_string()),
+            Some(Token::CloseBracket) => {
+                Err("Tried to parse expression from close bracket".to_string())
+            }
             Some(Token::OpenSquare) => Err("Expected expression found [".to_string()),
             Some(Token::CloseSquare) => Err("Expected expression found ]".to_string()),
             Some(Token::Identifier(name)) => {
@@ -628,11 +667,25 @@ impl Parser {
         }
     }
 
-    pub fn new(next_variable_id: VariableId, next_type_id: TypeId, variables: HashMap<VariableId, Variable>, types: HashMap<TypeId, Type>) -> Parser {
-        Parser {next_variable_id, next_type_id, variables, types}
+    pub fn new(
+        next_variable_id: VariableId,
+        next_type_id: TypeId,
+        variables: HashMap<VariableId, Variable>,
+        types: HashMap<TypeId, Type>,
+    ) -> Parser {
+        Parser {
+            next_variable_id,
+            next_type_id,
+            variables,
+            types,
+        }
     }
 
-    pub fn parse(mut self: Parser, tokens: impl Iterator<Item = Token>, env: Env) -> Result<Expr, String> {
+    pub fn parse(
+        mut self: Parser,
+        tokens: impl Iterator<Item = Token>,
+        env: Env,
+    ) -> Result<Expr, String> {
         let expr = self.parse_expr(&mut tokens.peekable(), &env)?;
         Ok(expr)
     }
