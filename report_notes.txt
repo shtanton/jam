@@ -1,0 +1,29 @@
+Week 1:
+Robustness is a very important part of programming, formal verification is hard probably (TODO is it?)
+Curry-Howard-Lambek correspondence - already a thing in haskell, can prove things with first order logic
+- A type is equivalent to a logical expression and a value of the type is a proof of that expression
+- Can only do propositional logic
+Intuitionistic type theory is dependent types which is what idris uses
+- Isomorphic to first or second (TODO) order logic
+- Very different to assembly types
+- Types like tuples and functions can have the types of later parts dependent on the values of earlier parts
+Simply typed lambda calculus:
+- All constructed types are functions
+- Church encodings don't map very well to assembly
+System F:
+- Passing types around like values is intuitive and easy to grasp
+- Still not a good map to assembly
+Refinement types:
+- Not part of the lambda cube
+- Maps very well to assembly
+
+Investigation:
+- Idris, Coq
+
+Jam wants to use an advanced type theory but not abstract too far from llvm bytecode.
+Thus it sits close to lambda C but additional restrictions can be put in place to only allow binding to a certain supertype.
+This is how refinement type functionality is achieved.
+
+Questions:
+- Is it beneficial to have features like (+ x x) being an even type, i.e. tracking variables as well as types?
+- Is my approach reasonable? I think it is more intuitive than refinement types and allows for better type inference
