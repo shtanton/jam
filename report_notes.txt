@@ -23,7 +23,13 @@ Investigation:
 Jam wants to use an advanced type theory but not abstract too far from llvm bytecode.
 Thus it sits close to lambda C but additional restrictions can be put in place to only allow binding to a certain supertype.
 This is how refinement type functionality is achieved.
+This hopefully is very intuitive as all this can be achieved simply by making types like values.
+The challenge is to be functional while still keeping the mapping to llvm simple.
+Complex code has a lot of bugs, so part of making jam robust is keeping the compilation process simple and predictable.
+It should be possible to step through the llvm bytecode in order to debug it and see what maps to what.
 
 Questions:
 - Is it beneficial to have features like (+ x x) being an even type, i.e. tracking variables as well as types?
 - Is my approach reasonable? I think it is more intuitive than refinement types and allows for better type inference
+- Does the university provide a way for me to access the "Journal of functional programming" in order to further research the lambda cube?
+- Should it have automatic currying? That would make it further from assembly
