@@ -17,8 +17,17 @@ Refinement types:
 - Not part of the lambda cube
 - Maps very well to assembly
 
+SMT:
+- Will use theories of: bitvectors, arrays, algebraic datatypes, structs
+- bitvectors for ints and floats
+- float bitvectors use IEEE 754 standard. LLVM also needs to use IEEE in order to be correct. I think it does since all modern widely used CPUs use IEEE and that's what LLVM will compile into
+- Arrays are mutable, similar to ocaml. They compile to just pointers as in C. They have a fixed length
+- Lists can be constructed from algebraic datatypes and will be in the standard library
+- Structs will be completely abstracted by the compiler so Z3 doesn't care about them particularly
+
 Investigation:
 - Idris, Coq
+- Limits of each SMT theory
 
 Jam wants to use an advanced type theory but not abstract too far from llvm bytecode.
 Thus it sits close to lambda C but additional restrictions can be put in place to only allow binding to a certain supertype.
