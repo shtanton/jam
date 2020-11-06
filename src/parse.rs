@@ -84,7 +84,6 @@ pub enum SMTValue {
     Variable(VariableId),
     Type(TypeId),
     Const(SMTConst),
-    This,
 }
 
 #[derive(Clone, Debug)]
@@ -220,6 +219,12 @@ impl Parser {
             .ok_or("Variable not found".to_string())
     }
 
+    fn construct_SMT_assertion(&self, super_type: SuperType, assertion: SMTValue) -> (Vec<u64>, SMTValue) {
+    }
+
+    fn SMT_accepts(&self, super_type: SuperType, target_assertion: SMTValue, subject_assertion: SMTValue) -> Result<bool, String> {
+    }
+
     fn accepts(&self, target_id: TypeId, subject_id: TypeId) -> Result<bool, String> {
         let target = self.get_type(target_id)?;
         let subject = self.get_type(subject_id)?;
@@ -312,6 +317,7 @@ impl Parser {
                 if target_super_type != subject_super_type {
                     return Ok(false);
                 }
+                // TODO
                 Ok(true)
             }
             _ => Ok(false),
@@ -623,15 +629,15 @@ impl Parser {
         match tokens.next() {
             None => Err("Tried to parse an expression from an empty token stream".to_string()),
             Some(Token::IntegerLiteral(num)) => {
+                let typ_id = self.get_type_id();
                 let typ = Type::Primitive {
                     instance: true,
                     super_type: SuperType::Int,
                     assertion: SMTValue::Call(
                         SMTFunction::Equal,
-                        Box::new((SMTValue::This, SMTValue::Const(SMTConst::Number(num)))),
+                        Box::new((SMTValue::Type(typ_id), SMTValue::Const(SMTConst::Number(num)))),
                     ),
                 };
-                let typ_id = self.get_type_id();
                 self.types.insert(typ_id, typ);
                 Ok(Expr {
                     kind: ExprKind::Number(num),
