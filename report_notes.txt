@@ -25,6 +25,9 @@ SMT:
 - Lists can be constructed from algebraic datatypes and will be in the standard library
 - Structs will be completely abstracted by the compiler so Z3 doesn't care about them particularly
 
+Implementation details:
+- Types can't be recursive unless they involve a pointer
+
 Investigation:
 - Idris, Coq
 - Limits of each SMT theory
@@ -42,3 +45,4 @@ Questions:
 - Is my approach reasonable? I think it is more intuitive than refinement types and allows for better type inference
 - Does the university provide a way for me to access the "Journal of functional programming" in order to further research the lambda cube?
 - Should it have automatic currying? That would make it further from assembly
+- Somehow I've got to get pointers into it too

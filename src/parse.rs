@@ -80,13 +80,14 @@ impl fmt::Display for SuperType {
 
 #[derive(Clone, Debug)]
 pub enum SMTValue {
-    Call(SMTFunction, Box<(SMTValue, SMTValue)>),
-    Variable(VariableId),
+    Call(SMTFunction, Vec<SMTValue>),
+    Variable(u64),
     Type(TypeId),
     Const(SMTConst),
+    This,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum SMTFunction {
     Equal,
 }
@@ -219,7 +220,34 @@ impl Parser {
             .ok_or("Variable not found".to_string())
     }
 
-    fn construct_SMT_assertion(&self, super_type: SuperType, assertion: SMTValue) -> (Vec<u64>, SMTValue) {
+    fn flatten_SMT_value(&self, value: &SMTValue) -> Result<(Vec<SuperType>, SMTValue), String> {
+    }
+
+		/// Returns how many variables are needed and an assertion over those variables
+		/// In the assertion the variables are referenced as u64 from 0 to count-1 inclusive
+		/// Variable 0 is the one that can take any value the type can take
+    fn construct_SMT_assertion(&self, type_id: TypeId) -> Result<(Vec<SuperType>, SMTValue), String> {
+        let typ = self.get_type(type_id)?;
+        let (super_type, assertion) = match typ {
+            Type::Function {..} => return Err("Tried to construct an SMT assertion for a function type".to_string()),
+            Type::AnyType => return Err("Tried to construct an SMT assertion for anytype".to_string()),
+            Type::Primitive {
+                super_type,
+                assertion,
+                ..
+            } => (super_type, assertion),
+        };
+        let mut super_types = vec![*super_type];
+        let final_assertion = match assertion {
+            SMTValue::Call(func, args) => {
+                let final_args = Vec::new();
+                for arg in args.iter() {
+                    let (used_for_arg, arg) = self.flatten_SMT_value(arg)?;
+                }
+                SMTValue::Call(*func, final_args)
+            },
+        };
+        Ok((super_types, final_assertion))
     }
 
     fn SMT_accepts(&self, super_type: SuperType, target_assertion: SMTValue, subject_assertion: SMTValue) -> Result<bool, String> {
@@ -635,7 +663,7 @@ impl Parser {
                     super_type: SuperType::Int,
                     assertion: SMTValue::Call(
                         SMTFunction::Equal,
-                        Box::new((SMTValue::Type(typ_id), SMTValue::Const(SMTConst::Number(num)))),
+                        Box::new((SMTValue::This, SMTValue::Const(SMTConst::Number(num)))),
                     ),
                 };
                 self.types.insert(typ_id, typ);
