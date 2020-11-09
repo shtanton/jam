@@ -28,9 +28,20 @@ SMT:
 Implementation details:
 - Types can't be recursive unless they involve a pointer
 
+Suppose I want to assign a value of type v to a variable of type t. Assume both are ints with predicates v and t respectively in Z3:
+(declare-const x Int)
+(assert (v x))
+(assert (forall ((y Int))
+	(or (t y) (not (= y x)))))
+(check-sat)
+Will be unsat if the assignment is valid, or sat if not and the model for sat is a value which the value could be but the type can't take so is useful for the compilers error message
+These predicates will take the form of a bunch of existential quantifiers, and then an expression with no quantifiers.
+These will need to be translated to Z3, all the existential quantifiers are effectively a variable in the sat code and the negation makes them all universal quantifiers so each is a variable in the forall assertion
+
 Investigation:
 - Idris, Coq
 - Limits of each SMT theory
+- Advantages over other CAFV methods
 
 Jam wants to use an advanced type theory but not abstract too far from llvm bytecode.
 Thus it sits close to lambda C but additional restrictions can be put in place to only allow binding to a certain supertype.
@@ -39,6 +50,7 @@ This hopefully is very intuitive as all this can be achieved simply by making ty
 The challenge is to be functional while still keeping the mapping to llvm simple.
 Complex code has a lot of bugs, so part of making jam robust is keeping the compilation process simple and predictable.
 It should be possible to step through the llvm bytecode in order to debug it and see what maps to what.
+It will also have eager evaluation which makes side effects easy to implement.
 
 Questions:
 - Is it beneficial to have features like (+ x x) being an even type, i.e. tracking variables as well as types?
