@@ -25,6 +25,9 @@ SMT:
 - Lists can be constructed from algebraic datatypes and will be in the standard library
 - Structs will be completely abstracted by the compiler so Z3 doesn't care about them particularly
 
+Implementation details:
+- Types can't be recursive unless they involve a pointer
+
 Suppose I want to assign a value of type v to a variable of type t. Assume both are ints with predicates v and t respectively in Z3:
 (declare-const x Int)
 (assert (v x))
