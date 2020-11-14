@@ -44,7 +44,7 @@ Investigation:
 - Advantages over other CAFV methods
 https://nikita-volkov.github.io/refined/
 - Papers on refinement types
-- Write a grammar
+--- Write a grammar
 - Reduction relations
 - Typing rules
 
@@ -58,3 +58,4 @@ It should be possible to step through the llvm bytecode in order to debug it and
 It will also have eager evaluation which makes side effects easy to implement.
 
 Questions:
+- How final should my grammar and semantics be?
