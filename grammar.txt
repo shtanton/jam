@@ -9,6 +9,7 @@ expr ->
 	| ( FN [ params ] type expr )
 	| ( IMPORT STRING )
 	| ( VALUEOF type )
+	| ( ITE expr expr expr )
 	| ( expr args )
 
 type ->
@@ -19,6 +20,7 @@ type ->
 	| ( FN [ type_params ] type type )
 	| ( IMPORT STRING )
 	| ( TYPEOF expr )
+	| ( ITE type type type )
 	| ( type type_args )
 
 defns ->
