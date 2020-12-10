@@ -46,7 +46,9 @@ https://nikita-volkov.github.io/refined/
 - Papers on refinement types
 --- Write a grammar
 - Reduction relations
-- Typing rules
+--- Typing rules
+- Explain how types are refined in a new way
+- Look at F* and similarities and differences
 
 Jam wants to use an advanced type theory but not abstract too far from llvm bytecode.
 Thus it sits close to lambda C but additional restrictions can be put in place to only allow binding to a certain supertype.

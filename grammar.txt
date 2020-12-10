@@ -14,10 +14,10 @@ expr ->
 
 type ->
 	| IDENTIFIER
-	| [ type NUMBER ]
 	| { record_types }
 	| ( LET [ type_defns ] type )
-	| ( FN [ type_params ] type type )
+	| ( FN [ type_params ] anytype type )
+	| ( [ param_types ] type )
 	| ( IMPORT STRING )
 	| ( TYPEOF expr )
 	| ( ITE type type type )
@@ -52,7 +52,7 @@ record_types ->
 
 type_defns ->
 	|
-	| ( IDENTIFIER type type ) type_defns
+	| ( IDENTIFIER anytype type ) type_defns
 
 type_params ->
 	|
