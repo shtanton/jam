@@ -2,13 +2,14 @@ extern crate im;
 extern crate lazy_static;
 extern crate llvm_sys;
 //mod codegen;
-mod lex;
-mod parse;
-mod stdlib;
+//mod lex;
+//mod parse;
+//mod stdlib;
+mod syntax;
 
-use llvm_sys::core::{
-    LLVMContextCreate, LLVMContextDispose, LLVMDisposeModule, LLVMModuleCreateWithName,
-};
+//use llvm_sys::core::{
+    //LLVMContextCreate, LLVMContextDispose, LLVMDisposeModule, LLVMModuleCreateWithName,
+//};
 use std::env;
 use std::fs::File;
 use std::io::Read;
@@ -35,10 +36,11 @@ fn main() {
         .read_to_string(&mut source)
         .expect("Error reading file");
 
-    let tokens: Vec<lex::Token> = lex::lex(source).map(|res| res.unwrap()).collect();
-    let ast = stdlib::stdparser()
-        .parse(tokens.into_iter(), stdlib::stdenv())
-        .unwrap();
+    //let tokens: Vec<lex::Token> = lex::lex(source).map(|res| res.unwrap()).collect();
+    //let ast = stdlib::stdparser()
+        //.parse(tokens.into_iter(), stdlib::stdenv())
+        //.unwrap();
+    let (_, ast) = syntax::expression(&source).unwrap();
     println!("{:#?}", ast);
 
     /*unsafe {

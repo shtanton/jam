@@ -59,5 +59,31 @@ Complex code has a lot of bugs, so part of making jam robust is keeping the comp
 It should be possible to step through the llvm bytecode in order to debug it and see what maps to what.
 It will also have eager evaluation which makes side effects easy to implement.
 
+Polymorphism can be done either by passing types as parameters, or by allowing a parameter to be of any type, with a variable taking whatever type it has, and only allowing access to that variable inside a block where the type is constrained
+x:$xt -> xt: match xt {
+	int -> x * 2,
+	bool -> true,
+}
+
+Henkin models
+
 Questions:
-- How final should my grammar and semantics be?
+- How do I know if the type rules are complete?
+- Should I just copy the lambda calculus from the paper initally and worry about changing it later?
+- The simply typed lambda calculus doesn't have recursion which my language should have
+
+Answers:
+- compilers: Appel
+- Gather list of clever implementation details
+- Microsoft FPC calculus
+- PCF calculi. Find one with refinements
+- LLVM correctness simply typed lambda caclulus
+
+Links that may contain a calculus:
+https://prosecco.gforge.inria.fr/personal/hritcu/students/alejandro/report.pdf
+http://noamz.org/oplss16/refinements-notes.pdf
+https://www.researchgate.net/publication/2387186_Refinement_Types_for_Specification
+https://www.lfcs.inf.ed.ac.uk/reports/99/ECS-LFCS-99-412/ECS-LFCS-99-412.pdf Denney 1998
+https://www.researchgate.net/profile/Ewen_Denney/publication/2406398_Refining_Refinement_Types/links/56d3210e08ae059e376122e4.pdf Denney 1997
+https://link.springer.com/chapter/10.1007/978-0-387-35358-6_13 Denney in a book
+
