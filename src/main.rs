@@ -8,7 +8,7 @@ extern crate llvm_sys;
 mod syntax;
 
 //use llvm_sys::core::{
-    //LLVMContextCreate, LLVMContextDispose, LLVMDisposeModule, LLVMModuleCreateWithName,
+//LLVMContextCreate, LLVMContextDispose, LLVMDisposeModule, LLVMModuleCreateWithName,
 //};
 use std::env;
 use std::fs::File;
@@ -38,8 +38,8 @@ fn main() {
 
     //let tokens: Vec<lex::Token> = lex::lex(source).map(|res| res.unwrap()).collect();
     //let ast = stdlib::stdparser()
-        //.parse(tokens.into_iter(), stdlib::stdenv())
-        //.unwrap();
+    //.parse(tokens.into_iter(), stdlib::stdenv())
+    //.unwrap();
     let (_, ast) = syntax::expression(&source).unwrap();
     println!("{:#?}", ast);
 
