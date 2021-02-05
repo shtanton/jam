@@ -2,9 +2,9 @@ extern crate nom;
 use nom::{
     alt, char,
     character::complete::{alphanumeric0, multispace0 as ws0, multispace1 as ws1},
-    complete,
+    complete, do_parse,
     error::{Error, ErrorKind},
-    many0, map, named, preceded, separated_list0, tag, take_while, tuple, Err, IResult, Needed,
+    map, named, separated_list0, tag, Err, IResult, Needed,
 };
 
 #[derive(Debug)]
@@ -29,7 +29,9 @@ pub enum Proposition {
 }
 
 #[derive(Debug)]
-pub enum Predicate {}
+pub enum Predicate {
+    GreaterThan,
+}
 
 #[derive(Debug)]
 pub enum Constant {
@@ -51,17 +53,28 @@ named!(typ_bool(&str) -> Type, map!(tag!("bool"), |_| Type::Bool));
 
 named!(typ_nat(&str) -> Type, map!(tag!("nat"), |_| Type::Nat));
 
-named!(typ_product(&str) -> Type, map!(tuple!(
-    char!('<'), ws0, identifier, ws0, char!(':'), ws0, typ, ws1, typ, ws0, char!('>')
-), |tup| Type::Product(tup.2, Box::new(tup.6), Box::new(tup.8))));
+named!(typ_product(&str) -> Type, do_parse!(
+    char!('<') >> ws0 >>
+    id: identifier >> ws0 >> char!(':') >> ws0 >>
+    first: typ >> ws1 >>
+    second: typ >> ws0 >> char!('>') >>
+    (Type::Product(id, Box::new(first), Box::new(second)))
+));
 
-named!(typ_function(&str) -> Type, map!(tuple!(
-    char!('('), ws0, tag!("fn"), ws1, identifier, ws0, char!(':'), ws0, typ, ws1, typ, ws0, char!(')')
-), |tup| Type::Function(tup.4, Box::new(tup.8), Box::new(tup.10))));
+named!(typ_function(&str) -> Type, do_parse!(
+    char!('(') >> ws0 >> tag!("fn") >> ws1 >>
+    id: identifier >> ws0 >> char!(':') >> ws0 >>
+    argtyp: typ >> ws1 >>
+    bodytyp: typ >> ws0 >> char!(')') >>
+    (Type::Function(id, Box::new(argtyp), Box::new(bodytyp)))
+));
 
-named!(typ_refinement(&str) -> Type, map!(tuple!(
-    identifier, ws0, char!(':'), ws0, typ, ws0, char!('{'), ws0, proposition, ws0, char!('}')
-), |tup| Type::Refinement(tup.0, Box::new(tup.4), tup.8)));
+named!(typ_refinement(&str) -> Type, do_parse!(
+    id: identifier >> ws0 >> char!(':') >> ws0 >>
+    t: typ >> ws0 >> char!('{') >> ws0 >>
+    prop: proposition >> ws0 >> char!('}') >>
+    (Type::Refinement(id, Box::new(t), prop))
+));
 
 named!(typ(&str) -> Type, alt!(typ_bool | typ_nat | typ_product | typ_function | typ_refinement));
 
@@ -81,79 +94,101 @@ fn identifier(input: &str) -> IResult<&str, Identifier> {
     }
 }
 
-named!(proposition(&str) -> Proposition, map!(tag!("false"), |_| Proposition::False));
+named!(proposition_false(&str) -> Proposition, map!(tag!("false"), |_| Proposition::False));
 
-named!(constant(&str) -> Constant, alt!(
-    map!(tag!("succ"), |_| Constant::Succ)
-        | map!(tag!("first"), |_| Constant::First)
-        | map!(tag!("second"), |_| Constant::Second)
+named!(proposition_implies(&str) -> Proposition, do_parse!(
+    char!('(') >> ws0 >> tag!("=>") >> ws1 >>
+    assumption: proposition >> ws1 >>
+    deduction: proposition >> ws0 >> char!(')') >>
+    (Proposition::Implies(Box::new(assumption), Box::new(deduction)))
 ));
 
-fn expression_variable(input: &str) -> IResult<&str, Expression> {
-    let (input, v) = identifier(input)?;
-    Ok((input, Expression::Variable(v)))
-}
+named!(proposition_forall(&str) -> Proposition, do_parse!(
+    char!('(') >> ws0 >> tag!("forall") >> ws1 >>
+    id: identifier >> ws0 >> char!(':') >> ws0 >>
+    t: typ >> ws1 >>
+    p: proposition >> ws0 >> char!(')') >>
+    (Proposition::Forall(id, Box::new(t), Box::new(p)))
+));
 
-fn expression_tuple(input: &str) -> IResult<&str, Expression> {
-    let (input, (_, _, e1, _, e2, _, _)) = tuple!(
-        input,
-        char!('<'),
-        ws0,
-        expression,
-        ws1,
-        expression,
-        ws0,
-        char!('>')
-    )?;
-    Ok((input, Expression::Tuple(Box::new(e1), Box::new(e2))))
-}
+named!(proposition_equal(&str) -> Proposition, do_parse!(
+    char!('(') >> ws0 >> char!('=') >> ws1 >>
+    t: typ >> ws1 >>
+    left: expression >> ws1 >>
+    right: expression >> ws0 >> char!(')') >>
+    (Proposition::Equal(Box::new(t), left, right))
+));
 
-fn expression_call(input: &str) -> IResult<&str, Expression> {
-    let (input, (_, _, c, _, args, _, _)) = tuple!(
-        input,
-        char!('('),
-        ws0,
-        constant,
-        ws1,
-        separated_list0!(ws1, complete!(expression)),
-        ws0,
-        char!(')')
-    )?;
-    Ok((input, Expression::Call(c, args)))
-}
+named!(proposition_subtype(&str) -> Proposition, do_parse!(
+    char!('(') >> ws0 >> tag!("<:") >> ws1 >>
+    left: typ >> ws1 >>
+    right: typ >> ws0 >> char!(')') >>
+    (Proposition::Subtype(Box::new(left), Box::new(right)))
+));
 
-fn expression_abstraction(input: &str) -> IResult<&str, Expression> {
-    let (input, (_, _, _, _, ident, _, _, _, t, _, body, _, _)) = tuple!(
-        input,
-        char!('('),
-        ws0,
-        tag!("fn"),
-        ws1,
-        identifier,
-        ws0,
-        char!(':'),
-        ws0,
-        typ,
-        ws1,
-        expression,
-        ws0,
-        char!(')')
-    )?;
-    Ok((
-        input,
-        Expression::Abstraction(ident, Box::new(t), Box::new(body)),
-    ))
-}
+named!(proposition_call(&str) -> Proposition, do_parse!(
+    char!('(') >> ws0 >>
+    pred: predicate >> ws1 >>
+    args: separated_list0!(ws1, complete!(expression)) >> char!(')') >>
+    (Proposition::Call(pred, args))
+));
 
-named!(expression_application(&str) -> Expression, map!(tuple!(char!('('), ws0, expression, ws1, expression, ws0, char!(')')), |tup| Expression::Application(Box::new(tup.2), Box::new(tup.4))));
+named!(proposition(&str) -> Proposition, alt!(
+    proposition_false |
+    proposition_implies |
+    proposition_forall |
+    proposition_equal |
+    proposition_subtype |
+    proposition_call
+));
 
-pub fn expression(input: &str) -> IResult<&str, Expression> {
-    alt!(
-        input,
-        expression_abstraction
-            | expression_call
-            | expression_application
-            | expression_variable
-            | expression_tuple
-    )
-}
+named!(predicate(&str) -> Predicate, alt!(
+    map!(tag!(">"), |_| Predicate::GreaterThan)
+));
+
+named!(constant(&str) -> Constant, alt!(
+    map!(tag!("succ"), |_| Constant::Succ) |
+    map!(tag!("first"), |_| Constant::First) |
+    map!(tag!("second"), |_| Constant::Second)
+));
+
+named!(expression_variable(&str) -> Expression, map!(identifier, Expression::Variable));
+
+named!(expression_tuple(&str) -> Expression, do_parse!(
+    char!('<') >> ws0 >>
+    first: expression >> ws1 >>
+    second: expression >> ws0 >>
+    char!('>') >>
+    (Expression::Tuple(Box::new(first), Box::new(second)))
+));
+
+named!(expression_call(&str) -> Expression, do_parse!(
+    char!('(') >> ws0 >>
+    c: constant >> ws1 >>
+    args: separated_list0!(ws1, complete!(expression)) >>
+    ws0 >> char!(')') >>
+    (Expression::Call(c, args))
+));
+
+named!(expression_abstraction(&str) -> Expression, do_parse!(
+    char!('(') >> ws0 >> tag!("fn") >> ws1 >>
+    id: identifier >> ws0 >> char!(':') >> ws0 >>
+    t: typ >> ws1 >>
+    body: expression >> ws0 >> char!(')') >>
+    (Expression::Abstraction(id, Box::new(t), Box::new(body)))
+));
+
+named!(expression_application(&str) -> Expression, do_parse!(
+    char!('(') >> ws0 >>
+    f: expression >> ws1 >>
+    arg: expression >> ws0 >> char!(')') >>
+    (Expression::Application(Box::new(f), Box::new(arg)))
+));
+
+named!(pub expression(&str) -> Expression, alt!(
+    expression_abstraction |
+    expression_call |
+    expression_application |
+    expression_variable |
+    expression_tuple
+));
