@@ -185,10 +185,25 @@ named!(expression_application(&str) -> Expression, do_parse!(
     (Expression::Application(Box::new(f), Box::new(arg)))
 ));
 
-named!(pub expression(&str) -> Expression, alt!(
+named!(expression(&str) -> Expression, alt!(
     expression_abstraction |
     expression_call |
     expression_application |
     expression_variable |
     expression_tuple
 ));
+
+named!(program(&str) -> Expression, do_parse!(
+    ws0 >>
+    e: expression >> ws0 >>
+    (e)
+));
+
+pub fn parse(input: &str) -> Result<Expression, String> {
+    let (remaining, ast) = program(input).map_err(|_| "parse error".to_string())?;
+    if remaining.len() == 0 {
+        Ok(ast)
+    } else {
+        Err("parse error".to_string())
+    }
+}

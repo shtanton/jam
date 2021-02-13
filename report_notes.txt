@@ -68,9 +68,7 @@ x:$xt -> xt: match xt {
 Henkin models
 
 Questions:
-- How do I know if the type rules are complete?
-- Should I just copy the lambda calculus from the paper initally and worry about changing it later?
-- The simply typed lambda calculus doesn't have recursion which my language should have
+- Should I implement recursion next, or a y combinator, or some iterative functions?
 
 Answers:
 - compilers: Appel
@@ -78,6 +76,8 @@ Answers:
 - Microsoft FPC calculus
 - PCF calculi. Find one with refinements
 - LLVM correctness simply typed lambda caclulus
+- Understand operational semantics in thesis P 199-202
+- Do call by name
 
 Links that may contain a calculus:
 https://prosecco.gforge.inria.fr/personal/hritcu/students/alejandro/report.pdf

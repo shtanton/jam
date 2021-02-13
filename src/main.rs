@@ -6,6 +6,7 @@ extern crate llvm_sys;
 //mod parse;
 //mod stdlib;
 mod syntax;
+mod semantic;
 
 //use llvm_sys::core::{
 //LLVMContextCreate, LLVMContextDispose, LLVMDisposeModule, LLVMModuleCreateWithName,
@@ -40,7 +41,7 @@ fn main() {
     //let ast = stdlib::stdparser()
     //.parse(tokens.into_iter(), stdlib::stdenv())
     //.unwrap();
-    let (_, ast) = syntax::expression(&source).unwrap();
+    let ast = syntax::parse(&source).unwrap();
     println!("{:#?}", ast);
 
     /*unsafe {
