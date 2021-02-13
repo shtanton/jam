@@ -135,6 +135,10 @@ impl Analyzer {
     fn is_subtype(&self, expected_subtype: Type, expected_supertype: Type) -> bool {
     }
 
+    /// Check types passed to a constant call and return the returned type of the call
+    fn constant_call(&mut self, constant: Constant, args: Vec<Type>, env: Environment) -> Result<Type, ()> {
+    }
+
     /// Label a Type
     fn typ(&mut self, typ: SType, env: Environment) -> Result<Type, ()> {
     }
@@ -172,6 +176,20 @@ impl Analyzer {
                 }
             }
             SExpression::Call(constant, args) => {
+                let args = args.into_iter().map(|e| self.expression(e, env)).collect::<Result<Vec<_>, ()>>()?;
+                let ret_type = self.constant_call(constant, args.iter().map(|e| e.typ).collect::<Vec<_>>(), env)?;
+                Ok(Expression {
+                    kind: ExpressionKind::Call(constant, args),
+                    typ: ret_type,
+                })
+            }
+            SExpression::Tuple(first, second) => {
+                let first = self.expression(*first, env)?;
+                let second = self.expression(*second, env)?;
+                Ok(Expression {
+                    kind: ExpressionKind::Tuple(Box::new(first), Box::new(second)),
+                    typ: typ,
+                })
             }
         }
     }
