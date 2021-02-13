@@ -99,10 +99,11 @@ struct Analyzer {
     types: TypeTable,
 
     ident_gen: IdentifierGenerator,
-    typ_gen: TypeGenerator,
+    type_gen: TypeGenerator,
 }
 
 impl Analyzer {
+    /// Create a new Identifier for the symbol and with the Type given and return it
     fn insert_symbol(&mut self, symbol: &str, typ: Type) -> Identifier {
         let ident = self.ident_gen.next();
         let var = Variable {
@@ -114,32 +115,63 @@ impl Analyzer {
         ident
     }
 
-    fn insert_typ(&mut self, kind: TypeKind) -> Type {
-        let typ = self.typ_gen.next();
-        let typ_data = TypeData {
+    /// Create a new Type with the given TypeKind and return it
+    fn insert_type(&mut self, kind: TypeKind) -> Type {
+        let typ = self.type_gen.next();
+        let type_data = TypeData {
             kind,
             id: typ,
         };
-        self.types.insert(typ, typ_data);
+        self.types.insert(typ, type_data);
         typ
     }
 
+    /// Get TypeData of a Type
+    fn type_data(&self, typ: Type) -> Option<&TypeData> {
+        self.types.get(&typ)
+    }
+
+    /// Return true if the first argument is a subtype of the second
+    fn is_subtype(&self, expected_subtype: Type, expected_supertype: Type) -> bool {
+    }
+
+    /// Label a Type
     fn typ(&mut self, typ: SType, env: Environment) -> Result<Type, ()> {
     }
 
+    /// Label an Expression
     fn expression(&mut self, expr: SExpression, env: Environment) -> Result<Expression, ()> {
         match expr {
             SExpression::Abstraction(sym, typ, expr) => {
-                let param_typ = self.typ(*typ, env)?;
-                let ident = self.insert_symbol(&sym, param_typ);
+                let param_type = self.typ(*typ, env)?;
+                let ident = self.insert_symbol(&sym, param_type);
                 let body = self.expression(*expr, env.update(sym.clone(), ident))?;
-                let ret_typ = body.typ;
-                let typ_kind = TypeKind::Function(ident, param_typ, ret_typ);
-                let typ = self.insert_typ(typ_kind);
+                let ret_type = body.typ;
+                let type_kind = TypeKind::Function(ident, param_type, ret_type);
+                let typ = self.insert_type(type_kind);
                 Ok(Expression {
-                    kind: ExpressionKind::Abstraction(ident, param_typ, Box::new(body)),
+                    kind: ExpressionKind::Abstraction(ident, param_type, Box::new(body)),
                     typ: typ,
                 })
+            }
+            SExpression::Application(fun, arg) => {
+                let labelled_fun = self.expression(*fun, env)?;
+                let labelled_arg = self.expression(*arg, env)?;
+                let fun_type_data = self.type_data(labelled_fun.typ).ok_or(())?;
+                if let TypeKind::Function(ident, expected_arg_type, ret_type) = fun_type_data.kind {
+                    if !self.is_subtype(labelled_arg.typ, expected_arg_type) {
+                        Err(())
+                    } else {
+                        Ok(Expression {
+                            kind: ExpressionKind::Application(Box::new(labelled_fun), Box::new(labelled_arg)),
+                            typ: ret_type,
+                        })
+                    }
+                } else {
+                    Err(())
+                }
+            }
+            SExpression::Call(constant, args) => {
             }
         }
     }
