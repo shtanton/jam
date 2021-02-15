@@ -115,6 +115,11 @@ impl Analyzer {
         ident
     }
 
+    /// Lookup a symbol in the symbol table
+    fn lookup_symbol(&self, symbol: Identifier) -> Result<&Variable, ()> {
+        self.symbols.get(&symbol).ok_or(())
+    }
+
     /// Create a new Type with the given TypeKind and return it
     fn insert_type(&mut self, kind: TypeKind) -> Type {
         let typ = self.type_gen.next();
@@ -188,7 +193,15 @@ impl Analyzer {
                 let second = self.expression(*second, env)?;
                 Ok(Expression {
                     kind: ExpressionKind::Tuple(Box::new(first), Box::new(second)),
-                    typ: typ,
+                    typ: self.insert_type(TypeKind::Product(self.ident_gen.next(), first.typ, second.typ)),
+                })
+            }
+            SExpression::Variable(ident) => {
+                let symbol = *env.get(&ident).ok_or(())?;
+                let variable = self.lookup_symbol(symbol)?;
+                Ok(Expression {
+                    kind: ExpressionKind::Variable(symbol),
+                    typ: variable.typ,
                 })
             }
         }
