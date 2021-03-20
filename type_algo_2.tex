@@ -1,0 +1,375 @@
+\documentclass[12pt,a4paper,titlepage]{article}
+\usepackage{mathtools}
+\usepackage{stmaryrd}
+\usepackage{amssymb}
+
+\newcommand{\lnc}[1]{Logic(\langle \rangle \vdash #1)}
+
+\title{Type checking the refinement typed calculus with an SMT solver}
+\author{Charlie Stanton}
+
+\begin{document}
+    \maketitle
+
+    \section{Starting Calculus}
+
+    \section{Algorithm Overview}
+    To simplify the algorithm, I have split it into several sections:
+
+    \begin{itemize}
+        \item Generate all required type judgements
+        \begin{itemize}
+            \item Find all applications in the program
+            \item Find the type expected for the argument passed to each function that's applied
+        \end{itemize}
+        \item Translate each type judgement to logical formulae
+        \item Translate each logical formula into a simple formula
+        \begin{itemize}
+            \item Remove refinement types
+            \item Lambda lift the program
+            \item Remove pairs from program
+            \item Specialize functions to remove function parameters
+            \item Uncurry functions to remove function returns
+        \end{itemize}
+        \item Translate the formulae into SMT programs
+    \end{itemize}
+
+    Higher order functions need to be removed as the SMT solver needs to have an equivalent expression
+    for every expression in the program, however the SMT solver has no support for higher order functions
+    or anonymous lambdas.
+
+    I will carry an example through my explanation of each of the steps, which will be:
+
+    $((\lambda f: \Pi_{x: even} odd . (\lambda x: even . f x)) (\lambda x: even . S x)) 0$
+
+    \section{Some syntactic sugar}
+    To make things simpler, I define several shorthands. Note that these are for use in the refinement calculus, since the logic already has them.
+
+    $true \coloneqq \ast =_\textbf{1} \ast$
+
+    $\neg P \coloneqq P \supset false$
+
+    $P \lor Q \coloneqq \neg P \supset Q$
+
+    $P \land Q \coloneqq \neg (P \supset \neg Q)$
+
+    \section{Finding Applications}
+
+    This is the first step in the actual type checking, since some steps are just to make the encoding to SMT
+    possible.
+    The objective is to find every application in the program as these are where the type checks need to happen.
+    Continuing the example, we have:
+
+    $f: \Pi_{x: even} odd, x: even \vdash f x$
+
+    $\langle \rangle \vdash (\lambda f: \Pi_{x: even} odd . (\lambda x: even . f x)) (\lambda x: even . S x)$
+
+    $\langle \rangle \vdash ((\lambda f: \Pi_{x: even} odd . (\lambda x: even . f x)) (\lambda x: even . S x)) 0$
+
+    \section{Find the expected types of arguments to functions applied}
+
+    Now we have every location, we need to know the expected type of the argument passed so we can check that
+    the argument does in fact have that type.
+    This uses a recursive function taking 2 arguments, the expression to find the parameter type for,
+    and a stack of expressions that are applied to the expression first before the application we're investigating.
+    This function is possible as refinements on types can't affect the expected type of the argument.
+
+    TODO: PROOF OF THAT CLAIM
+
+    It is defined as follows:
+
+    $ArgType(\Gamma, f: \Pi_{x: \phi} \psi, \Gamma' \vdash f, nil) := \phi$
+
+    $ArgType(\Gamma, f: (f: \phi)P, \Gamma' \vdash f, R) := ArgType(\Gamma, f: \phi, \Gamma' \vdash f, R)$
+
+    $ArgType(\Gamma \vdash \lambda x: \phi . t, nil) := \phi$
+
+    $ArgType(\Gamma, f: \Pi_{x: \phi} \psi, \Gamma' \vdash f, t : R) := ArgType(\Gamma, f': \psi[t / x], \Gamma' \vdash f', R)$
+
+    $ArgType(\Gamma \vdash \lambda x: \phi . t, t' : R) := ArgType(\Gamma \vdash t[t'/x], R)$
+
+    $ArgType(\Gamma \vdash t t', R) := ArgType(\Gamma \vdash t, t' : R)$
+
+    For some application $\Gamma \vdash t t'$, we are interested in verifying the typing judgement $\Gamma \vdash t': ArgType(t, nil)$.
+
+    Continuing the example, we have:
+
+    $f: \Pi_{x: even} odd, x: even \vdash x: even$
+
+    $\langle \rangle \vdash \lambda x: even . S x: \Pi_{x: even} odd$
+
+    $\langle \rangle \vdash 0: even$
+
+    \section{Translation to Logic}
+
+    The translation to logic makes use of the $Logic$ function, which is defined as follows.
+
+    $Logic(x: \phi, \Gamma \vdash t: \psi) \coloneqq
+    \forall x \in Simplify(\phi) . \lnc{x: \phi} \Rightarrow Logic(\Gamma \vdash t: \psi)$
+
+    $\lnc{t: \textbf{1}} \coloneqq is\textbf{1}\ Logic(t)$
+
+    $\lnc{t: \gamma} \coloneqq is\gamma\ Logic(t)$
+
+    $\lnc{t: \Sigma_{x: \phi} \psi} \coloneqq \lnc{\pi_1 (t) : \phi} \land \lnc{\pi_2 (t): \psi[\pi_1 (t) / x]}$
+
+    $\lnc{t: \Pi_{x: \phi} \psi} \coloneqq \forall x \in Simplify(\phi) . \lnc{x: \phi} \Rightarrow \lnc{tx: \psi}$
+
+    $\lnc{t: (x: \phi)P} \coloneqq \lnc{t: \phi} \land \lnc{P[t/x]}$
+
+    $\lnc{false} \coloneqq false$
+
+    $\lnc{P \supset Q} \coloneqq \lnc{P} \Rightarrow \lnc{Q}$
+
+    $\lnc{\forall x: \phi . P} \coloneqq \forall x \in Simplify(\phi) . \lnc{x: \phi} \Rightarrow \lnc{P}$
+
+    $\lnc{F(t_1, ..., t_n)} \coloneqq F(Logic(t_1), ..., Logic(t_n))$
+
+    $\lnc{t =_\textbf{1} t'} \coloneqq \lnc{t: \textbf{1}} \land \lnc{t': \textbf{1}}$
+
+    $\lnc{t =_\gamma t'} \coloneqq \lnc{t: \gamma} \land Logic(t) = Logic(t')$
+
+    $\lnc{t =_{\Sigma_{x: \phi} \psi} t'} \coloneqq
+    \lnc{\pi_1 (t) =_\phi \pi_2 (t')} \land \lnc{\pi_2 (t) =_{\psi[t/x]} \pi_2 (t')}$
+
+    $\lnc{t =_{\Pi_{x: \phi} \psi} t'} \coloneqq
+    \forall x \in Simplify(\phi) . \lnc{x: \phi} \Rightarrow \lnc{tx =_\psi t'x}$
+
+    $\lnc{t =_{(x: \phi)P} t'} \coloneqq \lnc{t =_\phi t'} \land \lnc{P[t/x]} \land \lnc{P[t'/x]}$
+
+    $Logic(x) \coloneqq x$
+
+    $Logic(k(t_1, ..., t_n)) \coloneqq k(Logic(t_1), ..., Logic(t_n))$
+
+    $Logic(\ast) \coloneqq \ast$
+
+    $Logic(\langle t, t' \rangle) \coloneqq \langle Logic(t), Logic(t') \rangle$
+
+    $Logic(\lambda x: \phi . t) \coloneqq \lambda x: Simplify(\phi) . Logic(t)$
+
+    $Logic(\pi_i (t)) \coloneqq \pi_i (Logic(t))$
+
+    $Logic(t\ t') \coloneqq Logic(t)\ Logic(t')$
+
+    These operations also rely on the function $Simplify$ defined as follows.
+
+    $Simplify(\textbf{1}) \coloneqq Term$
+
+    $Simplify(\gamma) \coloneqq Term$
+
+    $Simplify(\Sigma_{x: \phi} \psi) \coloneqq \langle Simplify(\phi), Simplify(\psi) \rangle$
+
+    $Simplify(\Pi_{x: \phi} \psi) \coloneqq Simplify(\phi) \rightarrow Simplify(\psi)$
+
+    $Simplify((x: \phi)P) \coloneqq Simplify(\phi)$
+
+    \section{Lambda Lifting}
+    This is the simplest step, so I go into the least detail.
+    The objective is to remove lambdas from the program and use only globally defined functions, as these are all
+    that is available in the SMT solver.
+    Whenever there is an abstraction expression, we define a new global function which takes the parameter of the
+    original abstraction, but also a parameter for each environment variable it requires, which can be deduced at
+    compile time.
+    Then the abstraction is replaced with the global function partially applied with the environment variables it
+    requires. For example:
+
+    $((\lambda f: nat \rightarrow nat . (\lambda x: nat . f x)) (\lambda x: nat . S x)) 0$
+
+    becomes:
+
+    $fn_1\ (f: nat \rightarrow nat)\ (x: nat) := f\ x$
+
+    $fn_2\ (f: nat \rightarrow nat) := fn_1\ f$
+
+    $fn_3\ (x: nat) := S x$
+
+    $main := fn_2\ fn_3\ 0$
+
+    TODO: FORMAL DEFINITION OF LAMBDA LIFTING OR REFERENCE TO PAPER CONTAINING ONE GOES HERE
+
+    \section{Remove Pairs}
+
+    The SMT solver has algebraic datatypes which can be used as records such as pairs, however we need to remove
+    all higher order functions using specialization and uncurrying, and those processes won't work if there
+    are functions inside pairs.
+    To simplify the type checker, we remove all pairs, so there are no pair types, or $\langle t, t' \rangle$ or
+    $\pi_i (t)$ expressions.
+
+    Use the same data structure as the specialization. Iterate through the functions starting with the first.
+    For this stage we temporarily introduce some new semantics, which simplify the transformation:
+
+    $\langle t_1, t_2 \rangle t' \rightarrow_\beta \langle t_1\ t', t_2\ t' \rangle$
+
+    Introducing this doesn't change the original program as if there were any instances of this structure before
+    then the type checker would've failed when finding the types of arguments.
+    The process is split into steps which, thanks to the new semantics, all produce equivalent programs,
+    however before and after the process as a whole, the semantics aren't necessary.
+    First we aim to remove pairs returned from functions. We do this by checking the return type of each function
+    and if it is a pair we replace it with 2 new functions, going from
+
+    $f\ x_1\ ...\ x_n := t$
+
+    to
+
+    $f_1\ x_1\ ...\ x_n := \pi_1(t)$
+
+    $f_2\ x_1\ ...\ x_n := \pi_2(t)$
+
+    Also any parameters with the type of
+    $\sigma_1 \rightarrow ... \rightarrow \sigma_n \rightarrow \langle \tau_1, \tau_2 \rangle$
+    should have their types changed to
+    $\langle \sigma_1 \rightarrow ... \rightarrow \sigma_n \rightarrow \tau_1, \sigma_1 \rightarrow ... \rightarrow \sigma_n \rightarrow \tau_2 \rangle$
+    We then replace any instances of $f$ in the whole program with $\langle f_1, f_2 \rangle$.
+    Because of the new semantics, this new program is equivalent to the old one.
+
+    Next we aim to remove pairs as parameters to functions. We do this by checking the types of any parameters
+    for functions, and the types of parameters of highers order parameters. We change
+
+    $f\ x_1\ ...\ (y: \langle \sigma_1, \sigma_2 \rangle)\ ...\ x_n := t$
+
+    to
+
+    $f\ x_1\ ...\ (y_1: \sigma_1)\ (y_2: \sigma_2)\ ...\ x_n := t[\langle y_1, y_2 \rangle / y]$
+
+    and changing parameters types of higher order parameters from
+
+    $\sigma_1 \rightarrow ... \rightarrow \langle \tau_1, \tau_2 \rangle \rightarrow ... \rightarrow \sigma_n \rightarrow \sigma$
+
+    to
+
+    $\sigma_1 \rightarrow ... \rightarrow \tau_1 \rightarrow \tau_2 \rightarrow ... \rightarrow \sigma_n \rightarrow \sigma$
+
+    Now there are no functions that accept pairs as arguments, so we must change everywhere a pair is passed as
+    an argument.
+    For any instance of $t\ t'$ where $t'$ is of type $\langle \tau_1, \tau_2 \rangle$ we replace it with
+    $(t\ \pi_1(t'))\ \pi_2(t')$.
+    Now no pairs are being passed as arguments, and the program is still equivalent.
+
+    Next we remove uses of the new semantics by expanding them using the new rule.
+    Any occurances of $\langle t_1, t_2 \rangle t'$ are replaced with $\langle t_1\ t', t_2\ t' \rangle$.
+
+    There are now very few uses of pairs left.
+    All abstractions were already removed and $\ast$ and constants couldn't be pairs anyway.
+    Additionally:
+    \begin{itemize}
+        \item No parameters are pairs so a pair cannot be a variable
+        \item No function returns a pair so a pair cannot be an application
+    \end{itemize}
+
+    Also places where the pair syntax ($\langle t_1, t_2 \rangle$) is used are now very limited too, as
+    it cannot be on either side of an application anymore.
+    If we consider the innermost usage of $pi_i(t)$ in a function, then the $t$ must have the structure
+    $\langle t_1, t_2 \rangle$ meaning we can simplify $pi_i(\langle t_1, t_2 \rangle)$ to $t_i$.
+    This removes all occurances of $\pi_i$ so the only remaining possible structure of a pair is
+    $\langle t_1, t_2 \rangle$. We can prove that none of these exist by contradiction.
+
+    Suppose one of these exists in a function, there must be an outermost usage that isn't contained in another
+    usage, but it must be contained in something since the function can't return it. It can't be in a constant,
+    application or $\pi_i$ so must be inside another pair literal, which contradicts our assumption.
+
+    Thus we have removed all occurances of pair types, pair literals and $\pi_i$ from the program while keeping
+    it equivalent to the original program.
+
+    \section{Specialize Functions}
+    Since the SMT solver can't reason with functions that are passed as parameters, we must find an equivalent
+    program that doesn't have higher order parameters (HOPs).
+    There are several ways of doing this, the most widely applicable is defunctionalization, which would work,
+    but specialization is much simpler.
+    The disadvantage of specialization is that in some recursive cases it goes into an infinite loop, however,
+    the calculus for Jam doesn't support recursion, so this isn't a problem.
+
+    Anywhere a function is passed as an argument, define a new function based on the one it is being passed
+    to but "specialized" to that argument, and change the application to use the new function.
+
+    Continuing our example, changing the application in $main$ produces:
+
+    $main := fn_2 fn_3\ 0$
+
+    $fn_2 fn_3 := fn1\ fn3$
+
+    Then changing the application in $fn2fn3$ produces:
+
+    $fn_2 fn_3 := fn_1 fn_3$
+
+    $fn_1 fn_3\ (x: nat) := fn_3\ x$
+
+    So removing functions that are no longer used, the new program is:
+
+    $fn_1 fn_3\ (x: nat) := fn_3\ x$
+
+    $fn_2 fn_3 := fn_1 fn_3$
+
+    $fn_3\ (x: nat) := S x$
+
+    $main := fn_2 fn_3\ 0$
+
+    Algorithm:
+
+    The program is stored as a list of function definitions.
+    Each function has a list of arguments with basic types and a body expression.
+    Each function body only references functions defined strictly before it in the list (this is
+    possible as there is no recursion or mutual recursion in Jam)
+
+    Starting at the end of the list of functions and working backwards, traverse the function body depth first
+    looking for an application where a function is used as an argument.
+    Inductively, since the process has already been run on all functions that reference this function, this
+    function doesn't take functional parameters.
+    Since constants can only return primitive types and can't be partially applied or passed as arguments,
+    the argument isn't a constant or constant call. Obviously $\ast$ isn't a function, and $\langle t_1, t_2 \rangle$,
+    $\pi_i (t)$ and $\lambda x: \phi . t$ expressions have all been removed by previous transformations.
+    Thus we know that the shape of the argument will be $f t_1 ... t_n$ where $f$ is a function defined earlier
+    in the list and $t_1, ..., t_n$ are expressions (where it is possible for $n$ to equal 0).
+
+    So with this in mind, we have some case of
+
+    $f\ x_1\ ...\ x_m := C[g\ u_1\ ...\ u_p\ (h\ t_1\ ...\ t_n)]$
+
+    For some naturals $m$, $n$, $p$ and some context $C$ and the function $g$ earlier in the list
+
+    $g\ y_1\ ...\ y_p\ y := t$
+
+    Define immediately before function $f$ in the list a new function $g'$
+
+    $g'\ y_1\ ...\ y_p\ z_1\ ...\ z_n := t[h\ z_1\ ...\ z_n / y]$
+
+    and change $f$ to
+
+    $f\ x_1\ ...\ x_m := C[g'\ u_1\ ...\ u_p\ t_1\ ...\ t_n]$
+
+    This removes one HOP from the program, so simply repeat this until there are no remaining HOPs.
+
+    \section{Uncurrying}
+
+    Using the same data structure as for the specialization, but now all HOPS are gone.
+    Some functions still might return functions, in which case we simply use $\eta$ equality to add
+    another parameter and apply the body to said parameter to get the new body.
+    After this all of the parameters for each function will explicit and the bodies will all have
+    primitive types. This operation might need to be done sometimes while specializing so functions have enough
+    parameters to add the new parameters.
+
+    We have now removed functions as arguments for or being returned from functions, which means there are no
+    possible remaining partial applications of functions, as the only place a function can be referenced is where
+    it is applied.
+    This means we can uncurry all the functions, removing the ability to partially apply them.
+
+    Continuing the example:
+
+    $fn_1 fn_3\ (x: nat) := fn_3\ 0$
+
+    $fn_2 fn_3\ (x: nat) := fn_1 fn_3\ x$
+
+    $fn_3\ (x: nat) := S x$
+
+    $main := fn_2 fn_3\ 0$
+
+    \section{Construct the SMT Program}
+
+    At this point we have a set of logic formulae which can be understood by the SMT solver, and we want to be
+    true for the program to pass type checking.
+    In this last stage we first invert the formulae since we want the SMT solver to return UNSAT on success.
+    This means we can pull lots of existential quantifiers out to the front of each formula, which represent
+    the environment of the typing judgement.
+    This means that if the SMT solver returns SAT then it will also give us a model environment that could exist
+    and which would violate the refinements, which is incredibly useful for debugging.
+
+\end{document}

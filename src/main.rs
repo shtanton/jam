@@ -7,6 +7,7 @@ extern crate llvm_sys;
 //mod stdlib;
 mod syntax;
 mod semantic;
+mod logic;
 
 //use llvm_sys::core::{
 //LLVMContextCreate, LLVMContextDispose, LLVMDisposeModule, LLVMModuleCreateWithName,

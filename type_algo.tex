@@ -1,0 +1,265 @@
+\documentclass[12pt,a4paper,titlepage]{article}
+\usepackage{mathtools}
+\usepackage{stmaryrd}
+\usepackage{amssymb}
+
+\newcommand{\typify}{\textit{Typify}}
+\newcommand{\bbrackets}[1]{\llbracket #1 \rrbracket}
+
+\title{Translation between Refinement typed calculus and SMT solver}
+\author{Charlie Stanton}
+
+\begin{document}
+    \maketitle
+
+    \section{Some syntactic sugar}
+    To make things simpler, I define several shorthands. Note that these are for use in the refinement calculus, since the logic already has them.
+
+    $true \coloneqq \ast =_\textbf{1} \ast$
+
+    $\neg P \coloneqq P \supset false$
+
+    $P \lor Q \coloneqq \neg P \supset Q$
+
+    $P \land Q \coloneqq \neg (P \supset \neg Q)$
+
+    \section{Translating to logic}
+    We want $\typify(\Gamma \vdash t: \phi) \land \bbrackets{Z} \Leftrightarrow \Gamma \vdash t: \phi$
+
+    \typify\ is a process that removes all refinement types leaving only primitive types. $\llbracket Z \rrbracket$ is a process that translates a typing judgement into logic.
+    The logic is then easy translate into an SMT solver program to evaluate it.
+
+    $\bbrackets{x: \phi, \Gamma \vdash Z} \equiv \forall x \in \tau . (P \Rightarrow \bbrackets{\Gamma \vdash Z}$ where $(x: \tau)P \equiv \bbrackets{\phi}$
+
+    $\bbrackets{P, \Gamma \vdash Z} \equiv \bbrackets{P} \Rightarrow \bbrackets{\Gamma \vdash Z}$
+
+    $\bbrackets{\langle \rangle \vdash t: \phi} \equiv P[\bbrackets{t} / x]$ where $(x: \tau)P \equiv \bbrackets{\phi}$
+
+    $\bbrackets{\textbf{1}} \equiv (x: \textbf{1}) true$
+
+    $\bbrackets{\gamma} \equiv (x: \gamma) true$
+
+    $\bbrackets{\Sigma_{x: \phi} \psi} \equiv (z: \sigma \times \tau) P[\bbrackets{\pi_1 z} / x] \land Q[\bbrackets{\pi_1 z} / x][\bbrackets{\pi_2 z} / y]$ where $(x: \sigma) P \equiv \bbrackets{\phi}$ and $(y: \tau) Q \equiv \bbrackets{\psi}$
+
+    $\bbrackets{\Pi_{x: \phi} \psi} \equiv (f: \sigma \rightarrow \tau) \forall x \in \sigma . P \Rightarrow Q[\bbrackets{f x} / y]$ where $(x: \sigma)P \equiv \bbrackets{\phi}$ and $(y: \tau)Q \equiv \bbrackets{\psi}$
+
+    $\bbrackets{(x: \phi)P} \equiv (x: \tau) \bbrackets{P} \land Q$ where $(x: \tau)Q \equiv \bbrackets{\phi}$
+
+    $\bbrackets{false} \equiv false$
+
+    $\bbrackets{P \supset Q} \equiv \bbrackets{P} \Rightarrow \bbrackets{Q}$
+
+    $\bbrackets{\forall x : \phi . P} \equiv \forall x \in \tau . (Q \Rightarrow \bbrackets{P})$ where $(x: \tau) Q \equiv \bbrackets{\phi}$
+
+    $\bbrackets{F(t_1, ..., t_n)} \equiv F(\bbrackets{t_1}, ..., \bbrackets{t_n})$
+
+    \[
+        \bbrackets{t =_\phi t'} \equiv \begin{cases}
+            true & \text{if }\phi \equiv \textbf{1}\\
+            \bbrackets{t} = \bbrackets{t'} & \text{if }\phi \equiv \gamma\\
+            \bbrackets{\pi_1 t =_{\psi_1} \pi_1 t'} \land \bbrackets{\pi_2 t =_{\psi_2[\pi_1 t / x]} \pi_2 t'} & \text{if }\phi \equiv \Sigma_{x:\psi_1} \psi_2\\
+            \bbrackets{\forall x : \psi_1 . tx =_{\psi_2} t'x} & \text{if }\phi \equiv \Pi_{x: \psi_1} \psi_2\\
+            \bbrackets{t =_\psi t'} \land \bbrackets{P[t/x]} \land \bbrackets{P[t'/x]} & \text{if }\phi \equiv (x: \psi)P\\
+        \end{cases}
+    \]
+
+    $\bbrackets{\phi \sqsubseteq \psi} \equiv \forall x \in \tau . Q \Rightarrow P$ where $(x: \tau)P \equiv \bbrackets{\phi}$ and $(x: \tau)Q \equiv \bbrackets{\psi}$
+
+    $\bbrackets{x} \equiv x$
+
+    $\bbrackets{k(t_1, ..., t_n)} \equiv k(\bbrackets{t_1}, ..., \bbrackets{t_n})$
+
+    $\bbrackets{*} \equiv *$
+
+    $\bbrackets{\langle t, t' \rangle} \equiv \langle \bbrackets{t}, \bbrackets{t'} \rangle$
+
+    $\bbrackets{\lambda x : \phi . t} \equiv \lambda x . \bbrackets{t}$
+
+    $\bbrackets{\pi_i t} \equiv \pi_i \bbrackets{t}$
+
+    $\bbrackets{tt'} \equiv \bbrackets{t} \bbrackets{t'}$
+
+    \section{Proving the correctness of the translation}
+    \subsection{Proving that all derivable typing judgements are satisfied once translated}
+    Proceed by induction on the typing rules.
+    I prove some useful lemmas first.
+
+    \subsubsection{Lemmas}
+
+    \begin{equation}
+        \bbrackets{\Gamma \vdash t: \phi} \equiv \forall x_1 \in \tau_1, ..., x_n \in \tau_n . \neg P_1 \lor ... \lor \neg P_{n+m} \lor P[\bbrackets{t} / x]
+    \end{equation}
+    where $(x: \tau)P \equiv \bbrackets{\phi}$
+    and for some $x_1, ..., x_n, \tau_1, ..., \tau_n, P_1, ..., P_{n+m}$
+
+    Proof by induction on the structure of $\Gamma$
+
+    Base case with $\Gamma \equiv \langle \rangle$:
+
+    $\bbrackets{\langle \rangle \vdash t: \phi} \equiv P[\bbrackets{t}/x]$ where $(x: \tau)P \equiv \bbrackets{\phi}$
+
+    Inductive steps:
+
+    If $\Gamma \equiv y: \psi, \Gamma'$
+
+    $\bbrackets{y: \psi, \Gamma \vdash t: \phi}$
+
+    $\equiv \forall x_1 \in \tau_1 . P_1 \Rightarrow \bbrackets{\Gamma \vdash t: \phi}$
+
+    $\equiv \forall x_1 \in \tau_1 . \neg P_1 \lor (\forall x_2 \in \tau_2, ..., x_n \in \tau_n . \neg P_2 \lor ... \lor \neg P_{n+m} \lor P)$
+
+    $\equiv \forall x_1, ..., x_n . \neg P_1 \lor ... \lor \neg P_{n+m} \lor P$
+
+    If $\Gamma \equiv P_{n+m}, \Gamma'$
+
+    $\bbrackets{P_{n+m}, \Gamma \vdash t: \phi}$
+
+    $\equiv P_{n+m} \Rightarrow \bbrackets{\Gamma \vdash t: \phi}$
+
+    $\equiv \neg P_{n+m} \lor (\forall x_1 \in \tau_1, ..., x_n \in \tau_n . \neg P_1 \lor ... \lor \neg P_{n+m-1} \lor P$
+
+    $\equiv \forall x_1 \in \tau_1, ..., x_n \in \tau_n . \neg P_1 \lor ... \lor \neg P_{n+m} \lor P$
+
+    \begin{equation}
+        \bbrackets{\Gamma \vdash t: \phi} \equiv true
+    \end{equation}
+    when $(x: \tau)true \equiv \bbrackets{\phi}$
+
+    Proof:
+
+    Using lemma (1):
+
+    $\bbrackets{\Gamma \vdash t: \phi}$
+
+    $\equiv \forall x_1 \in \tau_1, ..., x_n \in \tau_n . \neg P_1 \lor ... \lor \neg P_{n+m} \lor true$
+
+    $\equiv \forall x_1 \in \tau_1, ..., x_n \in \tau_n . true$
+
+    $\equiv true$
+
+    \begin{equation}
+        \text{if } \bbrackets{t} \equiv \bbrackets{t'} \land \bbrackets{P[t/x]} \land \typify (t =_\phi t') \text{ then } \bbrackets{t =_\phi t'}
+    \end{equation}
+    for $\phi$ with $(x: \tau)P \equiv \bbrackets{\phi}$
+
+    Proof by induction on the structure of $\phi$:
+
+    \textbf{For} $\phi \equiv \textbf{1}$:
+
+    $\bbrackets{t =_\textbf{1} t'} \equiv true$
+
+    \textbf{For} $\phi \equiv \gamma$:
+
+    Assuming $\bbrackets{t} \equiv \bbrackets{t'}$
+
+    $\bbrackets{t} = \bbrackets{t'}$
+
+    $\bbrackets{t =_\gamma t'}$
+
+    \textbf{For} $\phi \equiv \Sigma_{x:\phi} \psi$:
+
+    Assuming $\bbrackets{t} \equiv \bbrackets{t'}$
+
+    $\pi_1 \bbrackets{t} \equiv \pi_1 \bbrackets{t'} \land \pi_2 \bbrackets{t} \equiv \pi_2 \bbrackets{t'}$
+
+    $\bbrackets{\pi_1 t} \equiv \bbrackets{\pi_1 t'} \land \bbrackets{\pi_2 t} \equiv \bbrackets{\pi_2 t'}$
+
+    Using the induction hypothesis: $\bbrackets{\pi_1 t =_\phi \pi_2 t'} \land \bbrackets{\pi_2 t =_{\psi[\pi_1 t / x]} \pi_2 t'}$
+
+    $\bbrackets{t =_{\Sigma_{x:\phi} \psi} t'}$
+
+    \textbf{For} $\phi \equiv \Pi_{x:\phi} \psi$:
+
+    Assuming $\bbrackets{t} \equiv \bbrackets{t'}$
+
+    $\forall x \in \tau . P \Rightarrow \bbrackets{t} x \equiv \bbrackets{t'} x$
+
+    $\bbrackets{\forall x : \phi . tx =_\psi t'x}$ with $(x: \tau)P \equiv \bbrackets{\phi}$
+
+    $\bbrackets{t =_{\Pi_{x: \phi} \psi} t'}$
+
+    \textbf{For} $\phi \equiv (x: \psi)P$:
+
+    Assuming $\bbrackets{t} \equiv \bbrackets{t'} \land \bbrackets{P[t / x]}$
+
+    It is simple to show by induction that if $\bbrackets{t} \equiv \bbrackets{t'}$ then $\bbrackets{P[t/x]} \equiv \bbrackets{P[t'/x]}$ for any $P$
+
+    So we also have that $\bbrackets{P[t'/x]}$
+
+    Thus $\bbrackets{t =_\psi t'} \land \bbrackets{P[t/x]} \land \bbrackets{P[t'/x]}$
+
+    $\bbrackets{t =_\phi t'}$
+
+    \subsubsection{Refinement Typings}
+
+    \paragraph{(VAR)}\mbox{}\\
+
+    Assuming $\vdash \Gamma, x: \phi, \Gamma' wf$
+
+    We can assume $\typify (\vdash \Gamma, x: \phi, \Gamma' wf)$
+
+    So $\typify (\Gamma, x: \phi, \Gamma' \vdash x: \phi)$
+
+    Consider $\bbrackets{\Gamma, x: \phi, \Gamma' \vdash x: \phi}$
+
+    $\equiv \forall ..., x \in \tau . \neg P \lor P \lor ...$
+
+    $\equiv \forall ..., x \in \tau . true$
+
+    $\equiv true$
+
+    \paragraph{(CONST)}\mbox{}\\
+
+    Assuming $\Gamma \vdash t_i : \tau_i$ and $k$ is a primitive with type $\tau_1, ..., \tau_n \rightarrow \tau$.
+
+    We can assume $\typify (\Gamma \vdash t_i : \tau_i)$
+
+    Trivially $\typify (\Gamma \vdash k(t_1, ..., t_n) : \tau)$
+
+    Consider $\bbrackets{\Gamma \vdash k(t_1, ..., t_n): \tau}$
+
+    $\equiv true$ by lemma (2)
+
+    \paragraph{(UNIT)}\mbox{}\\
+
+    Assuming $\vdash \Gamma wf$
+
+    We can assume $\typify (\vdash \Gamma wf)$
+
+    Trivially $\typify (\Gamma \vdash \ast : \textbf{1})$
+
+    Consider $\bbrackets{\Gamma \vdash \ast : \textbf{1}}$
+
+    $\equiv true$ by lemma (2)
+
+    \subsubsection{$\beta\eta$ equality rules}
+
+    \paragraph{($\lambda$-$\beta$-EQ)}\mbox{}\\
+
+    Assuming $\Gamma, x: \phi \vdash t: \psi$ and $\Gamma \vdash t': \phi$
+
+    Let $(x: \sigma)P \equiv \bbrackets{\phi}$ and $(y: \tau)Q \equiv \bbrackets{\psi}$
+
+    We can assume $\bbrackets{\Gamma, x: \phi \vdash t: \psi}$
+
+    $\forall ..., x \in \sigma . \neg P \lor Q[\bbrackets{t}/y] \lor ...$
+
+    Take $x = t'$ then $\forall ...\ . \neg P[t'/x] \lor Q[t/y][t'/x] \lor ...$
+
+    Since $P[t'/x]$ we have $\forall ...\ . Q[t/y][t'/x] \lor ...$
+
+    $\forall ...\ . Q[t'/x][t[t'/x]/y] \lor P_1 \lor ... \lor P_n$
+
+    If $\forall ...\ . \neg Q[t'/x][t[t'/x]/y]$ then trivially $\bbrackets{\Gamma \vdash (\lambda x: \phi . t)t' =_{\psi[t'/x]} t[t'/x]}$
+
+    So proceed assuming $\exists ...\ . Q[t'/x][t[t'/x]/y]$
+
+    So $\bbrackets{Q[t'/x][t[t'/x]/y]}$
+
+    And clearly $\bbrackets{(\lambda x : \phi . t) t'} \equiv \bbrackets{t[t'/x]}$
+
+    Thus using lemma (3): $\bbrackets{\Gamma \vdash (\lambda x : \phi . t)t' =_{\psi[t'/x]} t[t'/x]}$
+
+    \subsection{Proving that all typing judgements that are satisfied once translated can be derived}
+
+\end{document}

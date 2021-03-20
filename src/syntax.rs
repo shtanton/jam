@@ -28,12 +28,12 @@ pub enum Proposition {
     Subtype(Box<Type>, Box<Type>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Predicate {
     GreaterThan,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Constant {
     Succ,
     First,
