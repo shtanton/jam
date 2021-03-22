@@ -36,8 +36,9 @@ pub enum Predicate {
 #[derive(Clone, Debug)]
 pub enum Constant {
     Succ,
-    First,
-    Second,
+    Zero,
+    True,
+    False,
 }
 
 #[derive(Debug)]
@@ -47,6 +48,8 @@ pub enum Expression {
     Tuple(Box<Expression>, Box<Expression>),
     Abstraction(Identifier, Box<Type>, Box<Expression>),
     Application(Box<Expression>, Box<Expression>),
+    First(Box<Expression>),
+    Second(Box<Expression>),
 }
 
 named!(typ_bool(&str) -> Type, map!(tag!("bool"), |_| Type::Bool));
@@ -148,8 +151,9 @@ named!(predicate(&str) -> Predicate, alt!(
 
 named!(constant(&str) -> Constant, alt!(
     map!(tag!("succ"), |_| Constant::Succ) |
-    map!(tag!("first"), |_| Constant::First) |
-    map!(tag!("second"), |_| Constant::Second)
+    map!(tag!("0"), |_| Constant::Zero) |
+    map!(tag!("true"), |_| Constant::True) |
+    map!(tag!("false"), |_| Constant::False)
 ));
 
 named!(expression_variable(&str) -> Expression, map!(identifier, Expression::Variable));
@@ -185,8 +189,22 @@ named!(expression_application(&str) -> Expression, do_parse!(
     (Expression::Application(Box::new(f), Box::new(arg)))
 ));
 
+named!(expression_first(&str) -> Expression, do_parse!(
+    char!('(') >> ws0 >> tag!("first") >> ws1 >>
+    arg: expression >> ws0 >> char!(')') >>
+    (Expression::First(Box::new(arg)))
+));
+
+named!(expression_second(&str) -> Expression, do_parse!(
+    char!('(') >> ws0 >> tag!("second") >> ws1 >>
+    arg: expression >> ws0 >> char!(')') >>
+    (Expression::First(Box::new(arg)))
+));
+
 named!(expression(&str) -> Expression, alt!(
     expression_abstraction |
+    expression_first |
+    expression_second |
     expression_call |
     expression_application |
     expression_variable |

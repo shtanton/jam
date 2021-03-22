@@ -57,8 +57,8 @@ pub enum Expression {
     Tuple(Box<(Expression, Expression)>),
     Abstraction(Identifier, Box<Expression>),
     Application(Box<(Expression, Expression)>),
-    Left(Box<Expression>),
-    Right(Box<Expression>),
+    First(Box<Expression>),
+    Second(Box<Expression>),
 }
 
 impl Expression {
@@ -87,10 +87,10 @@ impl Expression {
                 contents.0.substitute(expr, id);
                 contents.1.substitute(expr, id);
             },
-            Expression::Left(arg) => {
+            Expression::First(arg) => {
                 arg.substitute(expr, id);
             },
-            Expression::Right(arg) => {
+            Expression::Second(arg) => {
                 arg.substitute(expr, id);
             },
         }
