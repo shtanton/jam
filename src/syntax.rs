@@ -4,7 +4,7 @@ use nom::{
     character::complete::{alphanumeric0, multispace0 as ws0, multispace1 as ws1},
     complete, do_parse,
     error::{Error, ErrorKind},
-    map, named, separated_list0, tag, Err, IResult, Needed,
+    map, named, separated_list0, many0, preceded, tag, Err, IResult, Needed,
 };
 
 #[derive(Debug)]
@@ -28,12 +28,12 @@ pub enum Proposition {
     Subtype(Box<Type>, Box<Type>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum Predicate {
     GreaterThan,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum Constant {
     Succ,
     Zero,
@@ -168,8 +168,8 @@ named!(expression_tuple(&str) -> Expression, do_parse!(
 
 named!(expression_call(&str) -> Expression, do_parse!(
     char!('(') >> ws0 >>
-    c: constant >> ws1 >>
-    args: separated_list0!(ws1, complete!(expression)) >>
+    c: constant >>
+    args: many0!(preceded!(ws1, complete!(expression))) >>
     ws0 >> char!(')') >>
     (Expression::Call(c, args))
 ));

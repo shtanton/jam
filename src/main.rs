@@ -43,7 +43,8 @@ fn main() {
     //.parse(tokens.into_iter(), stdlib::stdenv())
     //.unwrap();
     let ast = syntax::parse(&source).unwrap();
-    println!("{:#?}", ast);
+    let labelled_ast = semantic::check(ast).unwrap();
+    println!("{:#?}", labelled_ast);
 
     /*unsafe {
         let context = LLVMContextCreate();

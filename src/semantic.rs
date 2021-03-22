@@ -100,7 +100,7 @@ impl Expression {
                     self.kind = expr.clone();
                 }
             },
-            ExpressionKind::Call(constant, args) => {
+            ExpressionKind::Call(_, args) => {
                 args.iter_mut().for_each(|arg| arg.substitute(expr, id));
             },
             ExpressionKind::Tuple(contents) => {
@@ -116,6 +116,12 @@ impl Expression {
             ExpressionKind::Application(contents) => {
                 contents.0.substitute(expr, id);
                 contents.1.substitute(expr, id);
+            },
+            ExpressionKind::First(arg) => {
+                arg.substitute(expr, id);
+            },
+            ExpressionKind::Second(arg) => {
+                arg.substitute(expr, id);
             },
         }
     }
@@ -190,7 +196,7 @@ impl Type {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ContextElement {
     Proposition(Proposition),
     Variable(Identifier, Type),
@@ -213,17 +219,17 @@ fn constantUnrefinedReturnType(constant: &Constant) -> UnrefinedType {
     }
 }
 
-fn addApplicationsToVec(expr: &Expression, context: Context, applications: &mut Vec<(Context, Expression, Expression)>) {
-    match expr.kind {
+fn addApplicationsToVec(expr: &Expression, mut context: Context, applications: &mut Vec<(Context, Expression, Expression)>) {
+    match &expr.kind {
         ExpressionKind::Variable(_) => {},
         ExpressionKind::Abstraction(id, typ, body) => {
-            context.push_back(ContextElement::Variable(id, typ));
+            context.push_back(ContextElement::Variable(*id, typ.clone()));
             addApplicationsToVec(&body, context, applications);
         },
         ExpressionKind::Application(contents) => {
             addApplicationsToVec(&contents.0, context.clone(), applications);
-            addApplicationsToVec(&contents.1, context, applications);
-            applications.push((context.clone(), contents.0.clone(), contents.1.clone()));
+            addApplicationsToVec(&contents.1, context.clone(), applications);
+            applications.push((context, contents.0.clone(), contents.1.clone()));
         },
         ExpressionKind::Call(_, args) => {
             args.into_iter().for_each(|arg| {
@@ -249,24 +255,25 @@ fn findApplications(expr: &Expression) -> Vec<(Context, Expression, Expression)>
     applications
 }
 
-fn argType(expr: &Expression, context: Context, args: ImVec<Expression>) -> Result<Type, ()> {
-    Ok(match expr.kind {
+fn argType(expr: &Expression, mut context: Context, mut args: ImVec<Expression>) -> Result<Type, ()> {
+    Ok(match &expr.kind {
         ExpressionKind::Abstraction(id, typ, body) => {
             if let Some(arg) = args.pop_back() {
-                body.substitute(&arg.kind, id);
+                let mut body = body.clone();
+                body.substitute(&arg.kind, *id);
                 argType(&body, context, args)?
             } else {
-                typ
+                typ.clone()
             }
         },
         ExpressionKind::Application(contents) => {
-            args.push_back(contents.1);
+            args.push_back(contents.1.clone());
             argType(&contents.0, context, args)?
         },
         ExpressionKind::Variable(id) => {
-            let (i, context_element) = context.iter().enumerate().rfind(|(_, element)| {
+            let (i, context_element) = context.iter_mut().enumerate().rfind(|(_, element)| {
                 if let ContextElement::Variable(el_id, _) = element {
-                    *el_id == id
+                    *el_id == *id
                 } else {
                     false
                 }
@@ -276,23 +283,25 @@ fn argType(expr: &Expression, context: Context, args: ImVec<Expression>) -> Resu
             } else {
                 return Err(())
             };
-            match var_type {
+            match &var_type {
                 Type::Refinement(_, typ, _) => {
-                    context.set(i, ContextElement::Variable(id, *typ.clone()));
+                    *context_element = ContextElement::Variable(*id, *typ.clone());
                     argType(expr, context, args)?
                 },
                 Type::Function(arg_id, contents) => {
                     if let Some(arg) = args.pop_back() {
+                        let mut var_type = var_type.clone();
                         var_type.substitute(&arg.kind, *arg_id);
-                        context.set(i, ContextElement::Variable(id, var_type.clone()));
+                        context.set(i, ContextElement::Variable(*id, var_type.clone()));
                         argType(expr, context, args)?
                     } else {
-                        contents.0
+                        contents.0.clone()
                     }
                 },
                 _ => return Err(()),
             }
         },
+        _ => return Err(()),
     })
 }
 
@@ -304,7 +313,7 @@ struct Analyzer {
 
 impl Analyzer {
     /// Label a proposition
-    fn label_proposition(&mut self, prop: &SProposition, env: ImHashMap<String, Identifier>) -> Result<Proposition, ()> {
+    fn label_proposition(&mut self, prop: &SProposition, mut env: ImHashMap<String, Identifier>) -> Result<Proposition, ()> {
         Ok(match prop {
             SProposition::Call(pred, args) => {
                 let args = args
@@ -348,7 +357,7 @@ impl Analyzer {
     }
 
     /// Label a Type
-    fn label_type(&mut self, typ: &SType, env: ImHashMap<String, Identifier>) -> Result<Type, ()> {
+    fn label_type(&mut self, typ: &SType, mut env: ImHashMap<String, Identifier>) -> Result<Type, ()> {
         Ok(match typ {
             SType::Bool => Type::Bool,
             SType::Nat => Type::Nat,
@@ -395,7 +404,7 @@ impl Analyzer {
     }
 
     /// Label an Expression
-    fn label_expression(&mut self, expr: &SExpression, env: ImHashMap<String, Identifier>) -> Result<Expression, ()> {
+    fn label_expression(&mut self, expr: &SExpression, mut env: ImHashMap<String, Identifier>) -> Result<Expression, ()> {
         Ok(match expr {
             SExpression::Abstraction(param_symbol, param_type, expr) => {
                 let param_type = self.label_type(param_type, env.clone())?;
@@ -407,25 +416,28 @@ impl Analyzer {
                     typ: param_type.unrefine(),
                 });
                 let body = self.label_expression(expr, env)?;
+                let unrefined_arg_type = param_type.unrefine();
+                let body_typ = body.typ.clone();
                 Expression {
                     kind: ExpressionKind::Abstraction(id, param_type, Box::new(body)),
-                    typ: UnrefinedType::Function(Box::new((param_type.unrefine(), body.typ))),
+                    typ: UnrefinedType::Function(Box::new((unrefined_arg_type, body_typ))),
                 }
             },
             SExpression::Application(fun, arg) => {
                 let labelled_fun = self.label_expression(fun, env.clone())?;
                 let labelled_arg = self.label_expression(arg, env)?;
-                if let UnrefinedType::Function(type_contents) = labelled_fun.typ {
+                if let UnrefinedType::Function(type_contents) = &labelled_fun.typ {
+                    let typ = type_contents.1.clone();
                     Expression {
                         kind: ExpressionKind::Application(Box::new((labelled_fun, labelled_arg))),
-                        typ: type_contents.1.clone(),
+                        typ: typ,
                     }
                 } else {
                     return Err(())
                 }
             },
             SExpression::Call(constant, args) => {
-                let args = args.into_iter().map(|arg| self.label_expression(arg, env)).collect::<Result<Vec<_>, ()>>()?;
+                let args = args.into_iter().map(|arg| self.label_expression(arg, env.clone())).collect::<Result<Vec<_>, ()>>()?;
                 Expression {
                     kind: ExpressionKind::Call(*constant, args),
                     typ: constantUnrefinedReturnType(&constant),
@@ -433,10 +445,11 @@ impl Analyzer {
             },
             SExpression::First(arg) => {
                 let arg = self.label_expression(arg, env)?;
-                if let UnrefinedType::Product(type_contents) = arg.typ {
+                if let UnrefinedType::Product(type_contents) = &arg.typ {
+                    let typ = type_contents.0.clone();
                     Expression {
                         kind: ExpressionKind::First(Box::new(arg)),
-                        typ: type_contents.0,
+                        typ: typ,
                     }
                 } else {
                     return Err(())
@@ -444,21 +457,23 @@ impl Analyzer {
             },
             SExpression::Second(arg) => {
                 let arg = self.label_expression(arg, env)?;
-                if let UnrefinedType::Product(type_contents) = arg.typ {
+                if let UnrefinedType::Product(type_contents) = &arg.typ {
+                    let typ = type_contents.1.clone();
                     Expression {
                         kind: ExpressionKind::Second(Box::new(arg)),
-                        typ: type_contents.1,
+                        typ,
                     }
                 } else {
                     return Err(())
                 }
             },
             SExpression::Tuple(first, second) => {
-                let first = self.label_expression(first, env)?;
+                let first = self.label_expression(first, env.clone())?;
                 let second = self.label_expression(second, env)?;
+                let typ = UnrefinedType::Product(Box::new((first.typ.clone(), second.typ.clone())));
                 Expression {
                     kind: ExpressionKind::Tuple(Box::new((first, second))),
-                    typ: UnrefinedType::Product(Box::new((first.typ, second.typ))),
+                    typ,
                 }
             },
             SExpression::Variable(symbol) => {
@@ -466,266 +481,23 @@ impl Analyzer {
                 let variable = self.symbol_table.get(id).ok_or(())?;
                 Expression {
                     kind: ExpressionKind::Variable(*id),
-                    typ: variable.typ,
+                    typ: variable.typ.clone(),
                 }
             },
         })
     }
 
-    /// Translate an expression type judgement to logic
-    fn expression_type_judgement_to_logic(&mut self, expr: &Expression, typ: &Type, context: Context) -> Result<LProposition, ()> {
-        match context.pop_front() {
-            Some(ContextElement::Variable(Variable{
-                typ: var_type,
-                id,
-                symbol,
-            })) => {
-                let (arg, sort, mut prop) = self.type_to_logic(&var_type)?;
-                prop.substitute(&LExpression::Variable(id), arg);
-                Ok(LProposition::Forall(
-                    id,
-                    sort,
-                    Box::new(LProposition::Implies(Box::new((
-                        prop,
-                        self.expression_type_judgement_to_logic(expr, typ, context)?,
-                    )))),
-                ))
-            },
-            Some(ContextElement::Proposition(p)) => {
-                Ok(LProposition::Implies(Box::new((
-                    self.proposition_to_logic(&p)?,
-                    self.expression_type_judgement_to_logic(expr, typ, context)?,
-                ))))
-            },
-            None => {
-                let (arg, sort, mut prop) = self.type_to_logic(typ)?;
-                prop.substitute(&self.expression_to_logic(expr)?, arg);
-                Ok(prop)
-            },
-        }
-    }
-
-    /// Translate a type to logic
-    fn type_to_logic(&mut self, typ: &Type) -> Result<(Identifier, Sort, LProposition), ()> {
-        match typ {
-            Type::Bool => Ok((self.ident_gen.next(), Sort::Bool, LProposition::True)),
-            Type::Nat => Ok((self.ident_gen.next(), Sort::Nat, LProposition::True)),
-            Type::Product(id, contents) => {
-                let (left_arg, left_sort, mut left_prop) = self.type_to_logic(&contents.0)?;
-                let (right_arg, right_sort, mut right_prop) = self.type_to_logic(&contents.1)?;
-                let id = self.ident_gen.next();
-                left_prop.substitute(
-                    &LExpression::First(Box::new(LExpression::Variable(id))),
-                    left_arg,
-                );
-                right_prop.substitute(
-                    &LExpression::First(Box::new(LExpression::Variable(id))),
-                    left_arg,
-                );
-                right_prop.substitute(
-                    &LExpression::Second(Box::new(LExpression::Variable(id))),
-                    right_arg,
-                );
-                Ok((
-                    id,
-                    Sort::Product(Box::new((left_sort, right_sort))),
-                    LProposition::And(Box::new((left_prop, right_prop))),
-                ))
-            },
-            Type::Function(arg, contents) => {
-                let (param_arg, param_sort, mut param_prop) = self.type_to_logic(&contents.0)?;
-                let (ret_arg, ret_sort, mut ret_prop) = self.type_to_logic(&contents.1)?;
-                let id = self.ident_gen.next();
-                param_prop.substitute(&LExpression::Variable(*arg), param_arg);
-                ret_prop.substitute(
-                    &LExpression::Application(Box::new((
-                        LExpression::Variable(id),
-                        LExpression::Variable(*arg),
-                    ))),
-                    ret_arg,
-                );
-                Ok((
-                    id,
-                    Sort::Function(Box::new((param_sort, ret_sort))),
-                    LProposition::Forall(
-                        *arg,
-                        param_sort,
-                        Box::new(LProposition::Implies(Box::new((
-                            param_prop,
-                            ret_prop,
-                        )))),
-                    ),
-                ))
-            },
-            Type::Refinement(arg, supertype, prop) => {
-                let (super_arg, sort, mut super_prop) = self.type_to_logic(supertype)?;
-                super_prop.substitute(&LExpression::Variable(*arg), super_arg);
-                Ok((*arg, sort, LProposition::And(Box::new((self.proposition_to_logic(prop)?, super_prop)))))
-            },
-        }
-    }
-
-    fn proposition_to_logic(&mut self, prop: &Proposition) -> Result<LProposition, ()> {
-        match prop {
-            Proposition::False => Ok(LProposition::False),
-            Proposition::Implies(contents) => Ok(LProposition::Implies(Box::new((
-                self.proposition_to_logic(&contents.0)?,
-                self.proposition_to_logic(&contents.1)?,
-            )))),
-            Proposition::Call(pred, args) => Ok(LProposition::Call(
-                *pred,
-                args.into_iter().map(|arg| self.expression_to_logic(arg)).collect::<Result<Vec<_>, ()>>()?,
-            )),
-            Proposition::Equal(contents) => {
-                let (ref typ, ref left, ref right) = **contents;
-                Ok(match typ {
-                    Type::Bool => LProposition::Equal(
-                        self.expression_to_logic(left)?,
-                        self.expression_to_logic(right)?,
-                    ),
-                    Type::Nat => LProposition::Equal(
-                        self.expression_to_logic(left)?,
-                        self.expression_to_logic(right)?,
-                    ),
-                    Type::Product(arg_id, contents) => {
-                        let sort = left.sort;
-                        LProposition::And(Box::new((
-                            self.proposition_to_logic(&Proposition::Equal(Box::new((
-                                contents.0,
-                                Expression{
-                                    kind: ExpressionKind::First(Box::new(left.clone())),
-                                    sort,
-                                },
-                                Expression{
-                                    kind: ExpressionKind::First(Box::new(right.clone())),
-                                    sort,
-                                },
-                            ))))?,
-                            self.proposition_to_logic(&Proposition::Equal(Box::new((
-                                {
-                                    let mut right_type = contents.1;
-                                    right_type.substitute(
-                                        &ExpressionKind::First(Box::new(left.clone())),
-                                        *arg_id,
-                                    );
-                                    right_type
-                                },
-                                Expression{
-                                    kind: ExpressionKind::Second(Box::new(left.clone())),
-                                    sort,
-                                },
-                                Expression{
-                                    kind: ExpressionKind::Second(Box::new(right.clone())),
-                                    sort,
-                                },
-                            ))))?,
-                        )))
-                    },
-                    Type::Function(arg_id, contents) => {
-                        let (left_id, left_sort, left_prop) = self.type_to_logic(&contents.0)?;
-                        let right_sort = self.type_to_logic(&contents.1)?.1;
-                        LProposition::Forall(
-                            *arg_id,
-                            left_sort,
-                            Box::new(LProposition::Implies(Box::new((
-                                left_prop,
-                                self.proposition_to_logic(&Proposition::Equal(Box::new((
-                                    contents.1,
-                                    Expression{
-                                        kind: ExpressionKind::Application(Box::new((
-                                            left.clone(),
-                                            Expression{
-                                                kind: ExpressionKind::Variable(*arg_id),
-                                                sort: left_sort,
-                                            },
-                                        ))),
-                                        sort: right_sort,
-                                    },
-                                    Expression{
-                                        kind: ExpressionKind::Application(Box::new((
-                                            right.clone(),
-                                            Expression{
-                                                kind: ExpressionKind::Variable(*arg_id),
-                                                sort: left_sort,
-                                            },
-                                        ))),
-                                        sort: right_sort,
-                                    },
-                                ))))?,
-                            )))),
-                        )
-                    },
-                    Type::Refinement(arg_id, supertype, prop) => {
-                        LProposition::And(Box::new((
-                            self.proposition_to_logic(&Proposition::Equal(Box::new((
-                                *supertype.clone(),
-                                left.clone(),
-                                right.clone(),
-                            ))))?,
-                            LProposition::And(Box::new((
-                                self.proposition_to_logic(&{
-                                    let p = prop.clone();
-                                    p.substitute(&left.kind, *arg_id);
-                                    p
-                                })?,
-                                self.proposition_to_logic(&{
-                                    let p = prop.clone();
-                                    p.substitute(&right.kind, *arg_id);
-                                    p
-                                })?,
-                            ))),
-                        )))
-                    },
-                })
-            },
-            Proposition::Supertype(contents) => {
-                let (left_arg, left_sort, left_prop) = self.type_to_logic(&contents.0)?;
-                let (right_arg, right_sort, right_prop) = self.type_to_logic(&contents.1)?;
-                right_prop.substitute(&LExpression::Variable(left_arg), right_arg);
-                Ok(LProposition::Forall(
-                    left_arg,
-                    left_sort,
-                    Box::new(LProposition::Implies(Box::new((
-                        right_prop,
-                        left_prop,
-                    )))),
-                ))
-            },
-        }
-    }
-
-    fn expression_to_logic(&mut self, expr: &Expression) -> Result<LExpression, ()> {
-        Ok(match expr.kind {
-            ExpressionKind::Variable(id) => LExpression::Variable(id),
-            ExpressionKind::Call(constant, args) => LExpression::Call(
-                constant,
-                args.iter().map(|arg| self.expression_to_logic(arg)).collect::<Result<Vec<_>, ()>>()?,
-            ),
-            ExpressionKind::Tuple(contents) => {
-                let (ref left, ref right) = *contents;
-                LExpression::Tuple(Box::new((
-                    self.expression_to_logic(left)?,
-                    self.expression_to_logic(right)?,
-                )))
-            },
-            ExpressionKind::Abstraction(param, param_type, body) => {
-                LExpression::Abstraction(param, Box::new(self.expression_to_logic(&body)?))
-            },
-            ExpressionKind::Application(contents) => {
-                let (ref left, ref right) = *contents;
-                LExpression::Application(Box::new((
-                    self.expression_to_logic(left)?,
-                    self.expression_to_logic(right)?,
-                )))
-            },
-            ExpressionKind::First(arg) => LExpression::First(Box::new(self.expression_to_logic(&arg)?)),
-            ExpressionKind::Second(arg) => LExpression::Second(Box::new(self.expression_to_logic(&arg)?)),
-        })
-    }
 }
 
 pub fn check(ast: SExpression) -> Result<Expression, String> {
-    let mut env = ImHashMap::default();
+    let env = ImHashMap::default();
     let mut analyzer = Analyzer::default();
-    analyzer.label_expression(&ast, env).map_err(|_| "semantic error".to_string())
+    let ast = analyzer.label_expression(&ast, env).map_err(|_| "labelling error".to_string())?;
+    let applications = findApplications(&ast);
+    let judgements = applications.into_iter().map(|(context, fun, arg)| -> Result<(Context, Expression, Type), ()> {
+        let typ = argType(&fun, context.clone(), ImVec::default())?;
+        Ok((context, arg, typ))
+    }).collect::<Result<Vec<_>, ()>>().map_err(|_| "error generating typing judgements".to_string())?;
+    println!("{:#?}", judgements);
+    Ok(ast)
 }
