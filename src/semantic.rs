@@ -67,7 +67,7 @@ impl Proposition {
                 contents.1.substitute(expr, id);
                 contents.2.substitute(expr, id);
             },
-            Proposition::Subtype(contents) => {
+            Proposition::Supertype(contents) => {
                 contents.0.substitute(expr, id);
                 contents.1.substitute(expr, id);
             },
@@ -193,7 +193,7 @@ impl Type {
 #[derive(Clone)]
 pub enum ContextElement {
     Proposition(Proposition),
-    Variable(Variable),
+    Variable(Identifier, Type),
 }
 
 pub type Context = ImVec<ContextElement>;
@@ -213,6 +213,89 @@ fn constantUnrefinedReturnType(constant: &Constant) -> UnrefinedType {
     }
 }
 
+fn addApplicationsToVec(expr: &Expression, context: Context, applications: &mut Vec<(Context, Expression, Expression)>) {
+    match expr.kind {
+        ExpressionKind::Variable(_) => {},
+        ExpressionKind::Abstraction(id, typ, body) => {
+            context.push_back(ContextElement::Variable(id, typ));
+            addApplicationsToVec(&body, context, applications);
+        },
+        ExpressionKind::Application(contents) => {
+            addApplicationsToVec(&contents.0, context.clone(), applications);
+            addApplicationsToVec(&contents.1, context, applications);
+            applications.push((context.clone(), contents.0.clone(), contents.1.clone()));
+        },
+        ExpressionKind::Call(_, args) => {
+            args.into_iter().for_each(|arg| {
+                addApplicationsToVec(&arg, context.clone(), applications);
+            });
+        },
+        ExpressionKind::First(arg) => {
+            addApplicationsToVec(&arg, context, applications);
+        },
+        ExpressionKind::Second(arg) => {
+            addApplicationsToVec(&arg, context, applications);
+        },
+        ExpressionKind::Tuple(contents) => {
+            addApplicationsToVec(&contents.0, context.clone(), applications);
+            addApplicationsToVec(&contents.1, context, applications);
+        },
+    };
+}
+
+fn findApplications(expr: &Expression) -> Vec<(Context, Expression, Expression)> {
+    let mut applications = Vec::new();
+    addApplicationsToVec(expr, ImVec::new(), &mut applications);
+    applications
+}
+
+fn argType(expr: &Expression, context: Context, args: ImVec<Expression>) -> Result<Type, ()> {
+    Ok(match expr.kind {
+        ExpressionKind::Abstraction(id, typ, body) => {
+            if let Some(arg) = args.pop_back() {
+                body.substitute(&arg.kind, id);
+                argType(&body, context, args)?
+            } else {
+                typ
+            }
+        },
+        ExpressionKind::Application(contents) => {
+            args.push_back(contents.1);
+            argType(&contents.0, context, args)?
+        },
+        ExpressionKind::Variable(id) => {
+            let (i, context_element) = context.iter().enumerate().rfind(|(_, element)| {
+                if let ContextElement::Variable(el_id, _) = element {
+                    *el_id == id
+                } else {
+                    false
+                }
+            }).ok_or(())?;
+            let var_type = if let ContextElement::Variable(_, typ) = context_element {
+                typ
+            } else {
+                return Err(())
+            };
+            match var_type {
+                Type::Refinement(_, typ, _) => {
+                    context.set(i, ContextElement::Variable(id, *typ.clone()));
+                    argType(expr, context, args)?
+                },
+                Type::Function(arg_id, contents) => {
+                    if let Some(arg) = args.pop_back() {
+                        var_type.substitute(&arg.kind, *arg_id);
+                        context.set(i, ContextElement::Variable(id, var_type.clone()));
+                        argType(expr, context, args)?
+                    } else {
+                        contents.0
+                    }
+                },
+                _ => return Err(()),
+            }
+        },
+    })
+}
+
 #[derive(Default)]
 struct Analyzer {
     ident_gen: IdentifierGenerator,
@@ -220,131 +303,6 @@ struct Analyzer {
 }
 
 impl Analyzer {
-    /// Create a new Identifier for the symbol and with the Type given and return it
-    fn insert_symbol(&mut self, symbol: &str, typ: Type) -> Identifier {
-        let ident = self.ident_gen.next();
-        let var = Variable {
-            typ,
-            id: ident,
-            symbol: symbol.to_string(),
-        };
-        self.symbols.insert(ident, var);
-        ident
-    }
-
-    /// Lookup a symbol in the symbol table
-    fn lookup_symbol(&self, symbol: Identifier) -> Result<&Variable, ()> {
-        self.symbols.get(&symbol).ok_or(())
-    }
-
-    /// Create a new Type with the given TypeKind and return it
-    fn insert_type(&mut self, kind: TypeKind) -> Type {
-        let typ = self.type_gen.next();
-        let type_data = TypeData {
-            kind,
-            id: typ,
-        };
-        self.types.insert(typ, type_data);
-        typ
-    }
-
-    /// Get TypeData of a Type
-    fn type_data(&self, typ: Type) -> Option<&TypeData> {
-        self.types.get(&typ)
-    }
-
-    fn substitute_expression(&self, expr: &Expression, target: &Expression, source: Identifier) -> Result<Expression, ()> {
-    }
-
-    fn substitute_proposition(&self, prop: &Proposition, expr: &Expression, ident: Identifier) -> Result<Proposition, ()> {
-        match prop {
-            Proposition::Call(pred, args) => {
-                let subbed_args = args.into_iter().map(|arg| self.substitute_expression(arg, expr, ident)).collect::<Result<Vec<_>, ()>>()?;
-                Ok(Proposition::Call(*pred, subbed_args))
-            }
-            Proposition::Equal(typ, left, right) => {
-                let subbed_left = self.substitute_expression(left, expr, ident)?;
-                let subbed_right = self.substitute_expression(right, expr, ident)?;
-                let subbed_typ = self.substitute_type(*typ, expr, ident)?;
-                Ok(Proposition::Equal(subbed_typ, subbed_left, subbed_right))
-            }
-            Proposition::False => {
-                Ok(Proposition::False)
-            }
-            Proposition::Forall(forall_ident, typ, forall_prop) => {
-                let subbed_typ = self.substitute_type(*typ, expr, ident)?;
-                let subbed_prop = self.substitute_proposition(forall_prop, expr, ident)?;
-                Ok(Proposition::Forall(*forall_ident, subbed_typ, Box::new(subbed_prop)))
-            }
-            Proposition::Implies(left, right) => {
-                let subbed_left = self.substitute_proposition(left, expr, ident)?;
-                let subbed_right = self.substitute_proposition(right, expr, ident)?;
-                Ok(Proposition::Implies(Box::new(subbed_left), Box::new(subbed_right)))
-            }
-            Proposition::Subtype(subtype, supertype) => {
-                let subbed_subtype = self.substitute_type(*subtype, expr, ident)?;
-                let subbed_supertype = self.substitute_type(*supertype, expr, ident)?;
-                Ok(Proposition::Subtype(subbed_subtype, subbed_supertype))
-            }
-        }
-    }
-
-    fn substitute_type(&self, typ: Type, expr: &Expression, ident: Identifier) -> Result<Type, ()> {
-        let type_data = self.type_data(typ).ok_or(())?;
-        match &type_data.kind {
-            TypeKind::Bool => Ok(typ),
-            TypeKind::Function(param_ident, param_type, ret_type) => {
-                let subbed_param_type = self.substitute_type(*param_type, expr, ident)?;
-                let subbed_ret_type = self.substitute_type(*ret_type, expr, ident)?;
-                if subbed_param_type == *param_type && subbed_ret_type == *ret_type {
-                    Ok(typ)
-                } else {
-                    let typ = self.insert_type(TypeKind::Function(
-                        *param_ident,
-                        subbed_param_type,
-                        subbed_ret_type,
-                    ));
-                    Ok(typ)
-                }
-            }
-            TypeKind::Nat => Ok(typ),
-            TypeKind::Product(first_ident, first, second) => {
-                let subbed_first = self.substitute_type(*first, expr, ident)?;
-                let subbed_second = self.substitute_type(*second, expr, ident)?;
-                if subbed_first == *first && subbed_second == *second {
-                    Ok(typ)
-                } else {
-                    Ok(self.insert_type(TypeKind::Product(
-                        *first_ident,
-                        subbed_first,
-                        subbed_second,
-                    )))
-                }
-            }
-            TypeKind::Refinement(ident, typ, prop) => {
-                let subbed_typ = self.substitute_type(*typ, expr, *ident)?;
-                let subbed_prop = self.substitute_proposition(prop, expr, *ident)?;
-                Ok(self.insert_type(TypeKind::Refinement(*ident, subbed_typ, subbed_prop)))
-            }
-        }
-    }
-
-    /// Return true if the first argument is a subtype of the second
-    /// has_type(t, phi, gamma) <=> gamma |- t : phi
-    fn has_type(&self, expr: &Expression, typ: Type, env: Environment) -> Result<bool, ()> {
-        let type_data = self.type_data(typ).ok_or(())?;
-        match (expr.kind, type_data.kind) {
-            (ExpressionKind::Tuple(first, second), TypeKind::Product(ident, first_type, second_type)) => {
-                Ok(
-                    self.has_type(&first, first_type, env)?
-                    && self.has_type(&second, self.substitute_type(second_type, &first, ident)?, env)?
-                    // TODO update env to include the ident
-                    && self.type_wf(second_type, env)
-                )
-            }
-        }
-    }
-
     /// Label a proposition
     fn label_proposition(&mut self, prop: &SProposition, env: ImHashMap<String, Identifier>) -> Result<Proposition, ()> {
         Ok(match prop {
@@ -767,7 +725,7 @@ impl Analyzer {
 }
 
 pub fn check(ast: SExpression) -> Result<Expression, String> {
-    let mut env = Environment::default();
+    let mut env = ImHashMap::default();
     let mut analyzer = Analyzer::default();
-    analyzer.expression(ast, env).map_err(|_| "semantic error".to_string())
+    analyzer.label_expression(&ast, env).map_err(|_| "semantic error".to_string())
 }
