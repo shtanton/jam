@@ -5,9 +5,9 @@ extern crate llvm_sys;
 //mod lex;
 //mod parse;
 //mod stdlib;
-mod syntax;
-mod semantic;
 mod logic;
+mod semantic;
+mod syntax;
 
 //use llvm_sys::core::{
 //LLVMContextCreate, LLVMContextDispose, LLVMDisposeModule, LLVMModuleCreateWithName,

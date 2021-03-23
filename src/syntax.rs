@@ -4,7 +4,7 @@ use nom::{
     character::complete::{alphanumeric0, multispace0 as ws0, multispace1 as ws1},
     complete, do_parse,
     error::{Error, ErrorKind},
-    map, named, separated_list0, many0, preceded, tag, Err, IResult, Needed,
+    many0, map, named, preceded, separated_list0, tag, Err, IResult, Needed,
 };
 
 #[derive(Debug)]
@@ -198,7 +198,7 @@ named!(expression_first(&str) -> Expression, do_parse!(
 named!(expression_second(&str) -> Expression, do_parse!(
     char!('(') >> ws0 >> tag!("second") >> ws1 >>
     arg: expression >> ws0 >> char!(')') >>
-    (Expression::First(Box::new(arg)))
+    (Expression::Second(Box::new(arg)))
 ));
 
 named!(expression(&str) -> Expression, alt!(

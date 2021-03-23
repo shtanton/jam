@@ -143,6 +143,8 @@
 
     $\lnc{t =_{(x: \phi)P} t'} \coloneqq \lnc{t =_\phi t'} \land \lnc{P[t/x]} \land \lnc{P[t'/x]}$
 
+    $\lnc{\phi \sqsubseteq \psi} \coloneqq \forall x \in Simplify(\psi) . \lnc{x: \psi} \Rightarrow \lnc{x: \phi}$
+
     $Logic(x) \coloneqq x$
 
     $Logic(k(t_1, ..., t_n)) \coloneqq k(Logic(t_1), ..., Logic(t_n))$
