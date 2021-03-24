@@ -1,3 +1,4 @@
+use crate::lambda_lift::LambdaLifter;
 use crate::logic::ToLogic;
 use crate::syntax::{
     Constant, Expression as SExpression, Predicate, Proposition as SProposition, Type as SType,
@@ -41,8 +42,9 @@ impl Proposition {
                 contents.0.substitute(expr, id);
                 contents.1.substitute(expr, id);
             }
-            Proposition::Forall(forall_id, contents) => {
+            Proposition::Forall(_, contents) => {
                 contents.0.substitute(expr, id);
+                contents.1.substitute(expr, id);
             }
             Proposition::Call(_, args) => {
                 args.iter_mut().for_each(|arg| {
@@ -64,6 +66,7 @@ impl Proposition {
 
 #[derive(Clone, Debug)]
 pub enum ExpressionKind {
+    Ast,
     Variable(Identifier),
     Call(Constant, Vec<Expression>),
     Tuple(Box<(Expression, Expression)>),
@@ -82,6 +85,7 @@ pub struct Expression {
 impl Expression {
     pub fn substitute(&mut self, expr: &ExpressionKind, id: Identifier) {
         match &mut self.kind {
+            ExpressionKind::Ast => {}
             ExpressionKind::Variable(var) => {
                 if *var == id {
                     self.kind = expr.clone();
@@ -116,6 +120,7 @@ impl Expression {
 
 #[derive(Clone, Debug)]
 pub enum UnrefinedType {
+    One,
     Bool,
     Nat,
     Product(Box<(UnrefinedType, UnrefinedType)>),
@@ -131,6 +136,7 @@ pub struct Variable {
 
 #[derive(Clone, Debug)]
 pub enum Type {
+    One,
     Bool,
     Nat,
     Product(Identifier, Box<(Type, Type)>),
@@ -141,8 +147,7 @@ pub enum Type {
 impl Type {
     pub fn substitute(&mut self, expr: &ExpressionKind, id: Identifier) {
         match self {
-            Type::Bool => {}
-            Type::Nat => {}
+            Type::One | Type::Bool | Type::Nat => {}
             Type::Product(left_id, contents) => {
                 contents.0.substitute(expr, id);
                 if *left_id != id {
@@ -166,6 +171,7 @@ impl Type {
 
     pub fn unrefine(&self) -> UnrefinedType {
         match self {
+            Type::One => UnrefinedType::One,
             Type::Bool => UnrefinedType::Bool,
             Type::Nat => UnrefinedType::Nat,
             Type::Product(_, contents) => {
@@ -202,6 +208,7 @@ fn add_applications_to_vec(
     applications: &mut Vec<(Context, Expression, Expression)>,
 ) {
     match &expr.kind {
+        ExpressionKind::Ast => {}
         ExpressionKind::Variable(_) => {}
         ExpressionKind::Abstraction(id, typ, body) => {
             context.push_back((*id, typ.clone()));
@@ -346,6 +353,7 @@ impl Analyzer {
         mut env: ImHashMap<String, Identifier>,
     ) -> Result<Type, ()> {
         Ok(match typ {
+            SType::One => Type::One,
             SType::Bool => Type::Bool,
             SType::Nat => Type::Nat,
             SType::Product(symbol, first, second) => {
@@ -403,6 +411,10 @@ impl Analyzer {
         mut env: ImHashMap<String, Identifier>,
     ) -> Result<Expression, ()> {
         Ok(match expr {
+            SExpression::Ast => Expression {
+                kind: ExpressionKind::Ast,
+                typ: UnrefinedType::One,
+            },
             SExpression::Abstraction(param_symbol, param_type, expr) => {
                 let param_type = self.label_type(param_type, env.clone())?;
                 let id = self.ident_gen.next();
@@ -498,7 +510,7 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
         .label_expression(&ast, env)
         .map_err(|_| "labelling error".to_string())?;
     let applications = find_applications(&ast);
-    let judgements = applications
+    let mut judgements = applications
         .into_iter()
         .map(
             |(context, fun, arg)| -> Result<(Context, Expression, Type), ()> {
@@ -508,7 +520,7 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
         )
         .collect::<Result<Vec<_>, ()>>()
         .map_err(|_| "error generating typing judgements".to_string())?;
-    println!("{:#?}", judgements);
+    judgements.push((ImVec::new(), ast.clone(), Type::Nat));
     let propositions = judgements
         .into_iter()
         .map(|(context, expr, typ)| {
@@ -517,6 +529,13 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
         })
         .collect::<Result<Vec<_>, ()>>()
         .map_err(|_| "error generating first order calculus propositions".to_string())?;
-    println!("{:#?}", propositions);
+    let lambda_lifted_propositions = propositions
+        .into_iter()
+        .map(|prop| {
+            let mut lambda_lifter = LambdaLifter::new();
+            lambda_lifter.lambda_lift(&prop)
+        })
+        .collect::<Vec<_>>();
+    println!("{:#?}", lambda_lifted_propositions);
     Ok(ast)
 }

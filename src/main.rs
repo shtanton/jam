@@ -1,10 +1,7 @@
 extern crate im;
 extern crate lazy_static;
 extern crate llvm_sys;
-//mod codegen;
-//mod lex;
-//mod parse;
-//mod stdlib;
+mod lambda_lift;
 mod logic;
 mod semantic;
 mod syntax;
@@ -44,7 +41,7 @@ fn main() {
     //.unwrap();
     let ast = syntax::parse(&source).unwrap();
     let labelled_ast = semantic::check(ast).unwrap();
-    println!("{:#?}", labelled_ast);
+    //println!("{:#?}", labelled_ast);
 
     /*unsafe {
         let context = LLVMContextCreate();

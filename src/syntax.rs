@@ -9,6 +9,7 @@ use nom::{
 
 #[derive(Debug)]
 pub enum Type {
+    One,
     Bool,
     Nat,
     Product(Identifier, Box<Type>, Box<Type>),
@@ -43,6 +44,7 @@ pub enum Constant {
 
 #[derive(Debug)]
 pub enum Expression {
+    Ast,
     Variable(Identifier),
     Call(Constant, Vec<Expression>),
     Tuple(Box<Expression>, Box<Expression>),
@@ -55,6 +57,8 @@ pub enum Expression {
 named!(typ_bool(&str) -> Type, map!(tag!("bool"), |_| Type::Bool));
 
 named!(typ_nat(&str) -> Type, map!(tag!("nat"), |_| Type::Nat));
+
+named!(typ_one(&str) -> Type, map!(char!('1'), |_| Type::One));
 
 named!(typ_product(&str) -> Type, do_parse!(
     char!('<') >> ws0 >>
@@ -79,7 +83,7 @@ named!(typ_refinement(&str) -> Type, do_parse!(
     (Type::Refinement(id, Box::new(t), prop))
 ));
 
-named!(typ(&str) -> Type, alt!(typ_bool | typ_nat | typ_product | typ_function | typ_refinement));
+named!(typ(&str) -> Type, alt!(typ_bool | typ_nat | typ_product | typ_function | typ_refinement | typ_one));
 
 fn identifier(input: &str) -> IResult<&str, Identifier> {
     if let Some(c) = input.chars().nth(0) {
@@ -201,11 +205,17 @@ named!(expression_second(&str) -> Expression, do_parse!(
     (Expression::Second(Box::new(arg)))
 ));
 
+named!(expression_ast(&str) -> Expression, do_parse!(
+    char!('*') >>
+    (Expression::Ast)
+));
+
 named!(expression(&str) -> Expression, alt!(
     expression_abstraction |
     expression_first |
     expression_second |
     expression_call |
+    expression_ast |
     expression_application |
     expression_variable |
     expression_tuple

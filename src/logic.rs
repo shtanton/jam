@@ -17,6 +17,7 @@ pub enum Sort {
 impl Sort {
     fn from_type(typ: &SType) -> Sort {
         match typ {
+            SType::One => Sort::Value,
             SType::Bool => Sort::Value,
             SType::Nat => Sort::Value,
             SType::Product(_, contents) => Sort::Product(Box::new((
@@ -32,7 +33,7 @@ impl Sort {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum LPredicate {
     Is1,
     IsNat,
@@ -51,44 +52,9 @@ pub enum Proposition {
     Equal(Expression, Expression),
 }
 
-impl Proposition {
-    pub fn substitute(&mut self, expr: &Expression, id: Identifier) {
-        match self {
-            Proposition::False => {}
-            Proposition::True => {}
-            Proposition::And(args) => {
-                args.0.substitute(expr, id);
-                args.1.substitute(expr, id);
-            }
-            Proposition::Implies(args) => {
-                args.0.substitute(expr, id);
-                args.1.substitute(expr, id);
-            }
-            Proposition::Forall(forall_id, sort, prop) => {
-                if *forall_id != id {
-                    prop.substitute(expr, id);
-                }
-            }
-            Proposition::Call(pred, args) => {
-                args.iter_mut().for_each(|arg| {
-                    arg.substitute(expr, id);
-                });
-            }
-            Proposition::CallLogic(_, args) => {
-                args.iter_mut().for_each(|arg| {
-                    arg.substitute(expr, id);
-                });
-            }
-            Proposition::Equal(left, right) => {
-                left.substitute(expr, id);
-                right.substitute(expr, id);
-            }
-        };
-    }
-}
-
 #[derive(Clone, Debug)]
 pub enum Expression {
+    Ast,
     Variable(Identifier),
     Call(Constant, Vec<Expression>),
     Tuple(Box<(Expression, Expression)>),
@@ -96,42 +62,6 @@ pub enum Expression {
     Application(Box<(Expression, Expression)>),
     First(Box<Expression>),
     Second(Box<Expression>),
-}
-
-impl Expression {
-    pub fn substitute(&mut self, expr: &Expression, id: Identifier) {
-        match self {
-            Expression::Variable(var) => {
-                if *var == id {
-                    *self = expr.clone();
-                }
-            }
-            Expression::Call(constant, args) => {
-                args.iter_mut().for_each(|arg| {
-                    arg.substitute(expr, id);
-                });
-            }
-            Expression::Tuple(contents) => {
-                contents.0.substitute(expr, id);
-                contents.1.substitute(expr, id);
-            }
-            Expression::Abstraction(arg, _, body) => {
-                if *arg != id {
-                    body.substitute(expr, id);
-                }
-            }
-            Expression::Application(contents) => {
-                contents.0.substitute(expr, id);
-                contents.1.substitute(expr, id);
-            }
-            Expression::First(arg) => {
-                arg.substitute(expr, id);
-            }
-            Expression::Second(arg) => {
-                arg.substitute(expr, id);
-            }
-        }
-    }
 }
 
 pub struct ToLogic {
@@ -173,6 +103,9 @@ impl ToLogic {
             )
         } else {
             match typ {
+                SType::One => {
+                    Proposition::CallLogic(LPredicate::Is1, vec![self.expression_to_logic(expr)?])
+                }
                 SType::Bool => Proposition::CallLogic(
                     LPredicate::IsBool,
                     vec![self.expression_to_logic(expr)?],
@@ -272,6 +205,10 @@ impl ToLogic {
                 let left = contents.1.clone();
                 let right = contents.2.clone();
                 match typ {
+                    SType::One => Proposition::And(Box::new((
+                        self.type_judgement_to_logic(&left, &SType::One, ImVec::new())?,
+                        self.type_judgement_to_logic(&right, &SType::One, ImVec::new())?,
+                    ))),
                     SType::Bool | SType::Nat => Proposition::And(Box::new((
                         self.type_judgement_to_logic(&left, &typ, ImVec::new())?,
                         Proposition::Equal(
@@ -376,6 +313,7 @@ impl ToLogic {
 
     fn expression_to_logic(&mut self, expr: &SExpression) -> Result<Expression, ()> {
         Ok(match &expr.kind {
+            SExpressionKind::Ast => Expression::Ast,
             SExpressionKind::Variable(id) => Expression::Variable(*id),
             SExpressionKind::Call(constant, args) => Expression::Call(
                 *constant,
