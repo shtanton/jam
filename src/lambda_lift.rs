@@ -1,18 +1,25 @@
 use crate::logic::{Expression as LExpression, LPredicate, Proposition as LProposition, Sort};
 use crate::syntax::{Constant, Predicate};
 
-type FnIdentifier = u32;
+pub type FnIdentifier = u32;
 
 type Identifier = u32;
 
 #[derive(Debug)]
 pub struct Function {
-    id: FnIdentifier,
-    parameters: Vec<(Identifier, Sort)>,
-    body: Expression,
+    pub id: FnIdentifier,
+    pub parameters: Vec<(Identifier, Sort)>,
+    pub ret_type: Sort,
+    pub body: Expression,
 }
 
-#[derive(Debug)]
+impl Function {
+    pub fn substitute_fn(&mut self, expr: &Expression, fn_id: FnIdentifier) {
+        self.body.substitute_fn(expr, fn_id);
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum Expression {
     Ast,
     Variable(Identifier),
@@ -22,6 +29,38 @@ pub enum Expression {
     Application(Box<(Expression, Expression)>),
     First(Box<Expression>),
     Second(Box<Expression>),
+}
+
+impl Expression {
+    pub fn substitute_fn(&mut self, expr: &Expression, fn_id: FnIdentifier) {
+        match self {
+            Expression::Ast | Expression::Variable(_) => {}
+            Expression::Function(id) => {
+                if *id == fn_id {
+                    *self = expr.clone();
+                }
+            }
+            Expression::Call(_, args) => {
+                args.iter_mut().for_each(|arg| {
+                    arg.substitute_fn(expr, fn_id);
+                });
+            }
+            Expression::Tuple(contents) => {
+                contents.0.substitute_fn(expr, fn_id);
+                contents.1.substitute_fn(expr, fn_id);
+            }
+            Expression::Application(contents) => {
+                contents.0.substitute_fn(expr, fn_id);
+                contents.1.substitute_fn(expr, fn_id);
+            }
+            Expression::First(arg) => {
+                arg.substitute_fn(expr, fn_id);
+            }
+            Expression::Second(arg) => {
+                arg.substitute_fn(expr, fn_id);
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -34,6 +73,30 @@ pub enum Proposition {
     Call(Predicate, Vec<Expression>),
     CallLogic(LPredicate, Vec<Expression>),
     Equal(Expression, Expression),
+}
+
+impl Proposition {
+    pub fn substitute_fn(&mut self, expr: &Expression, fn_id: FnIdentifier) {
+        match self {
+            Proposition::False | Proposition::True => {}
+            Proposition::And(contents) | Proposition::Implies(contents) => {
+                contents.0.substitute_fn(expr, fn_id);
+                contents.1.substitute_fn(expr, fn_id);
+            }
+            Proposition::Forall(_, _, prop) => {
+                prop.substitute_fn(expr, fn_id);
+            }
+            Proposition::Call(_, args) | Proposition::CallLogic(_, args) => {
+                args.iter_mut().for_each(|arg| {
+                    arg.substitute_fn(expr, fn_id);
+                });
+            }
+            Proposition::Equal(left, right) => {
+                left.substitute_fn(expr, fn_id);
+                right.substitute_fn(expr, fn_id);
+            }
+        }
+    }
 }
 
 pub struct LambdaLifter {
@@ -101,12 +164,13 @@ impl LambdaLifter {
         fns: &mut Vec<Function>,
     ) -> Expression {
         match expr {
-            LExpression::Abstraction(id, sort, body) => {
+            LExpression::Abstraction(id, param_sort, ret_sort, body) => {
                 let fn_id = self.next_fn_id();
                 let body = self.lambda_lift_expression(body, fns);
                 fns.push(Function {
                     id: fn_id,
-                    parameters: vec![(*id, sort.clone())],
+                    parameters: vec![(*id, param_sort.clone())],
+                    ret_type: ret_sort.clone(),
                     body,
                 });
                 Expression::Function(fn_id)

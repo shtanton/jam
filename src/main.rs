@@ -3,6 +3,7 @@ extern crate lazy_static;
 extern crate llvm_sys;
 mod lambda_lift;
 mod logic;
+mod remove_pairs;
 mod semantic;
 mod syntax;
 
@@ -13,11 +14,11 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 
-macro_rules! c_str {
+/*macro_rules! c_str {
     ($s:expr) => {
         concat!($s, "\0").as_ptr() as *const i8
     };
-}
+}*/
 
 fn main() {
     let args: Vec<String> = env::args().collect();
