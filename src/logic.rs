@@ -67,12 +67,18 @@ pub enum Proposition {
 }
 
 #[derive(Clone, Debug)]
-pub enum Expression {
+pub struct Expression {
+    pub kind: ExpressionKind,
+    pub sort: Sort,
+}
+
+#[derive(Clone, Debug)]
+pub enum ExpressionKind {
     Ast,
     Variable(Identifier),
     Call(Constant, Vec<Expression>),
     Tuple(Box<(Expression, Expression)>),
-    Abstraction(Identifier, Sort, Sort, Box<Expression>),
+    Abstraction(Identifier, Sort, Box<Expression>),
     Application(Box<(Expression, Expression)>),
     First(Box<Expression>),
     Second(Box<Expression>),
@@ -326,35 +332,37 @@ impl ToLogic {
     }
 
     fn expression_to_logic(&mut self, expr: &SExpression) -> Result<Expression, ()> {
-        Ok(match &expr.kind {
-            SExpressionKind::Ast => Expression::Ast,
-            SExpressionKind::Variable(id) => Expression::Variable(*id),
-            SExpressionKind::Call(constant, args) => Expression::Call(
-                *constant,
-                args.into_iter()
-                    .map(|arg| self.expression_to_logic(&arg))
-                    .collect::<Result<Vec<_>, ()>>()?,
-            ),
-            SExpressionKind::Tuple(contents) => Expression::Tuple(Box::new((
-                self.expression_to_logic(&contents.0)?,
-                self.expression_to_logic(&contents.1)?,
-            ))),
-            SExpressionKind::Abstraction(id, typ, body) => Expression::Abstraction(
-                *id,
-                Sort::from_type(&typ),
-                Sort::from_unrefined_type(&body.typ),
-                Box::new(self.expression_to_logic(&body)?),
-            ),
-            SExpressionKind::First(arg) => {
-                Expression::First(Box::new(self.expression_to_logic(&arg)?))
-            }
-            SExpressionKind::Second(arg) => {
-                Expression::Second(Box::new(self.expression_to_logic(&arg)?))
-            }
-            SExpressionKind::Application(contents) => Expression::Application(Box::new((
-                self.expression_to_logic(&contents.0)?,
-                self.expression_to_logic(&contents.1)?,
-            ))),
+        Ok(Expression {
+            kind: match &expr.kind {
+                SExpressionKind::Ast => ExpressionKind::Ast,
+                SExpressionKind::Variable(id) => ExpressionKind::Variable(*id),
+                SExpressionKind::Call(constant, args) => ExpressionKind::Call(
+                    *constant,
+                    args.into_iter()
+                        .map(|arg| self.expression_to_logic(&arg))
+                        .collect::<Result<Vec<_>, ()>>()?,
+                ),
+                SExpressionKind::Tuple(contents) => ExpressionKind::Tuple(Box::new((
+                    self.expression_to_logic(&contents.0)?,
+                    self.expression_to_logic(&contents.1)?,
+                ))),
+                SExpressionKind::Abstraction(id, typ, body) => ExpressionKind::Abstraction(
+                    *id,
+                    Sort::from_type(&typ),
+                    Box::new(self.expression_to_logic(&body)?),
+                ),
+                SExpressionKind::First(arg) => {
+                    ExpressionKind::First(Box::new(self.expression_to_logic(&arg)?))
+                }
+                SExpressionKind::Second(arg) => {
+                    ExpressionKind::Second(Box::new(self.expression_to_logic(&arg)?))
+                }
+                SExpressionKind::Application(contents) => ExpressionKind::Application(Box::new((
+                    self.expression_to_logic(&contents.0)?,
+                    self.expression_to_logic(&contents.1)?,
+                ))),
+            },
+            sort: Sort::from_unrefined_type(&expr.typ),
         })
     }
 }

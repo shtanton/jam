@@ -1,15 +1,17 @@
-use crate::logic::{Expression as LExpression, LPredicate, Proposition as LProposition, Sort};
+use crate::logic::{
+    Expression as LExpression, ExpressionKind as LExpressionKind, LPredicate,
+    Proposition as LProposition, Sort,
+};
 use crate::syntax::{Constant, Predicate};
 
 pub type FnIdentifier = u32;
 
-type Identifier = u32;
+pub type Identifier = u32;
 
 #[derive(Debug)]
 pub struct Function {
     pub id: FnIdentifier,
     pub parameters: Vec<(Identifier, Sort)>,
-    pub ret_type: Sort,
     pub body: Expression,
 }
 
@@ -20,7 +22,13 @@ impl Function {
 }
 
 #[derive(Clone, Debug)]
-pub enum Expression {
+pub struct Expression {
+    pub kind: ExpressionKind,
+    pub typ: Sort,
+}
+
+#[derive(Clone, Debug)]
+pub enum ExpressionKind {
     Ast,
     Variable(Identifier),
     Function(FnIdentifier),
@@ -33,31 +41,61 @@ pub enum Expression {
 
 impl Expression {
     pub fn substitute_fn(&mut self, expr: &Expression, fn_id: FnIdentifier) {
-        match self {
-            Expression::Ast | Expression::Variable(_) => {}
-            Expression::Function(id) => {
+        match &mut self.kind {
+            ExpressionKind::Ast | ExpressionKind::Variable(_) => {}
+            ExpressionKind::Function(id) => {
                 if *id == fn_id {
                     *self = expr.clone();
                 }
             }
-            Expression::Call(_, args) => {
+            ExpressionKind::Call(_, args) => {
                 args.iter_mut().for_each(|arg| {
                     arg.substitute_fn(expr, fn_id);
                 });
             }
-            Expression::Tuple(contents) => {
+            ExpressionKind::Tuple(contents) => {
                 contents.0.substitute_fn(expr, fn_id);
                 contents.1.substitute_fn(expr, fn_id);
             }
-            Expression::Application(contents) => {
+            ExpressionKind::Application(contents) => {
                 contents.0.substitute_fn(expr, fn_id);
                 contents.1.substitute_fn(expr, fn_id);
             }
-            Expression::First(arg) => {
+            ExpressionKind::First(arg) => {
                 arg.substitute_fn(expr, fn_id);
             }
-            Expression::Second(arg) => {
+            ExpressionKind::Second(arg) => {
                 arg.substitute_fn(expr, fn_id);
+            }
+        }
+    }
+
+    pub fn substitute(&mut self, expr: &Expression, var_id: Identifier) {
+        match &mut self.kind {
+            ExpressionKind::Ast | ExpressionKind::Function(_) => {}
+            ExpressionKind::Function(id) => {
+                if *id == var_id {
+                    *self = expr.clone();
+                }
+            }
+            ExpressionKind::Call(_, args) => {
+                args.iter_mut().for_each(|arg| {
+                    arg.substitute_fn(expr, var_id);
+                });
+            }
+            ExpressionKind::Tuple(contents) => {
+                contents.0.substitute_fn(expr, var_id);
+                contents.1.substitute_fn(expr, var_id);
+            }
+            ExpressionKind::Application(contents) => {
+                contents.0.substitute_fn(expr, var_id);
+                contents.1.substitute_fn(expr, var_id);
+            }
+            ExpressionKind::First(arg) => {
+                arg.substitute_fn(expr, var_id);
+            }
+            ExpressionKind::Second(arg) => {
+                arg.substitute_fn(expr, var_id);
             }
         }
     }
@@ -94,6 +132,28 @@ impl Proposition {
             Proposition::Equal(left, right) => {
                 left.substitute_fn(expr, fn_id);
                 right.substitute_fn(expr, fn_id);
+            }
+        }
+    }
+
+    pub fn substitute(&mut self, expr: &Expression, fn_id: FnIdentifier) {
+        match self {
+            Proposition::False | Proposition::True => {}
+            Proposition::And(contents) | Proposition::Implies(contents) => {
+                contents.0.substitute(expr, fn_id);
+                contents.1.substitute(expr, fn_id);
+            }
+            Proposition::Forall(_, _, prop) => {
+                prop.substitute(expr, fn_id);
+            }
+            Proposition::Call(_, args) | Proposition::CallLogic(_, args) => {
+                args.iter_mut().for_each(|arg| {
+                    arg.substitute(expr, fn_id);
+                });
+            }
+            Proposition::Equal(left, right) => {
+                left.substitute(expr, fn_id);
+                right.substitute(expr, fn_id);
             }
         }
     }
@@ -163,41 +223,43 @@ impl LambdaLifter {
         expr: &LExpression,
         fns: &mut Vec<Function>,
     ) -> Expression {
-        match expr {
-            LExpression::Abstraction(id, param_sort, ret_sort, body) => {
-                let fn_id = self.next_fn_id();
-                let body = self.lambda_lift_expression(body, fns);
-                fns.push(Function {
-                    id: fn_id,
-                    parameters: vec![(*id, param_sort.clone())],
-                    ret_type: ret_sort.clone(),
-                    body,
-                });
-                Expression::Function(fn_id)
-            }
-            LExpression::Application(contents) => Expression::Application(Box::new((
-                self.lambda_lift_expression(&contents.0, fns),
-                self.lambda_lift_expression(&contents.1, fns),
-            ))),
-            LExpression::Call(constant, args) => {
-                let args = args
-                    .into_iter()
-                    .map(|arg| self.lambda_lift_expression(arg, fns))
-                    .collect::<Vec<_>>();
-                Expression::Call(*constant, args)
-            }
-            LExpression::First(arg) => {
-                Expression::First(Box::new(self.lambda_lift_expression(&arg, fns)))
-            }
-            LExpression::Second(arg) => {
-                Expression::Second(Box::new(self.lambda_lift_expression(&arg, fns)))
-            }
-            LExpression::Tuple(contents) => Expression::Tuple(Box::new((
-                self.lambda_lift_expression(&contents.0, fns),
-                self.lambda_lift_expression(&contents.1, fns),
-            ))),
-            LExpression::Variable(id) => Expression::Variable(*id),
-            LExpression::Ast => Expression::Ast,
+        Expression {
+            kind: match &expr.kind {
+                LExpressionKind::Abstraction(id, param_sort, body) => {
+                    let fn_id = self.next_fn_id();
+                    let body = self.lambda_lift_expression(body, fns);
+                    fns.push(Function {
+                        id: fn_id,
+                        parameters: vec![(*id, param_sort.clone())],
+                        body,
+                    });
+                    ExpressionKind::Function(fn_id)
+                }
+                LExpressionKind::Application(contents) => ExpressionKind::Application(Box::new((
+                    self.lambda_lift_expression(&contents.0, fns),
+                    self.lambda_lift_expression(&contents.1, fns),
+                ))),
+                LExpressionKind::Call(constant, args) => {
+                    let args = args
+                        .into_iter()
+                        .map(|arg| self.lambda_lift_expression(arg, fns))
+                        .collect::<Vec<_>>();
+                    ExpressionKind::Call(*constant, args)
+                }
+                LExpressionKind::First(arg) => {
+                    ExpressionKind::First(Box::new(self.lambda_lift_expression(&arg, fns)))
+                }
+                LExpressionKind::Second(arg) => {
+                    ExpressionKind::Second(Box::new(self.lambda_lift_expression(&arg, fns)))
+                }
+                LExpressionKind::Tuple(contents) => ExpressionKind::Tuple(Box::new((
+                    self.lambda_lift_expression(&contents.0, fns),
+                    self.lambda_lift_expression(&contents.1, fns),
+                ))),
+                LExpressionKind::Variable(id) => ExpressionKind::Variable(*id),
+                LExpressionKind::Ast => ExpressionKind::Ast,
+            },
+            typ: expr.sort.clone(),
         }
     }
 
