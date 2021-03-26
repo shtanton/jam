@@ -247,6 +247,14 @@
 
     $\sigma_1 \rightarrow ... \rightarrow \tau_1 \rightarrow \tau_2 \rightarrow ... \rightarrow \sigma_n \rightarrow \sigma$
 
+    and changing any $\forall$ occurances in the proposition from
+
+    $\forall x \in \langle \tau_1, \tau_2 \rangle . P$
+
+    to
+
+    $\forall x_1 \in \tau_1 . \forall x_2 \in \tau_2 . P[\langle x_1, x_2 \rangle / x]$
+
     Now there are no functions that accept pairs as arguments, so we must change everywhere a pair is passed as
     an argument.
     For any instance of $t\ t'$ where $t'$ is of type $\langle \tau_1, \tau_2 \rangle$ we replace it with

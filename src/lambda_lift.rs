@@ -73,7 +73,7 @@ impl Expression {
     pub fn substitute(&mut self, expr: &Expression, var_id: Identifier) {
         match &mut self.kind {
             ExpressionKind::Ast | ExpressionKind::Function(_) => {}
-            ExpressionKind::Function(id) => {
+            ExpressionKind::Variable(id) => {
                 if *id == var_id {
                     *self = expr.clone();
                 }
