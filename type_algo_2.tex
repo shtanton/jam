@@ -257,12 +257,18 @@
 
     Now there are no functions that accept pairs as arguments, so we must change everywhere a pair is passed as
     an argument.
+
+    TODO - CAN I RELY ON THE TYPES OF EXPRESSION AT THIS POINT IN PROCESSING?
+
     For any instance of $t\ t'$ where $t'$ is of type $\langle \tau_1, \tau_2 \rangle$ we replace it with
     $(t\ \pi_1(t'))\ \pi_2(t')$.
     Now no pairs are being passed as arguments, and the program is still equivalent.
 
     Next we remove uses of the new semantics by expanding them using the new rule.
     Any occurances of $\langle t_1, t_2 \rangle t'$ are replaced with $\langle t_1\ t', t_2\ t' \rangle$.
+    We also replace any occurances of $\pi_i(t) t'$ with $\pi_i(t\ t')$.
+    Since at this point, only pair literals and $\pi_i$ terms could have a product type, this removes
+    all instances of pairs being applied.
 
     There are now very few uses of pairs left.
     All abstractions were already removed and $\ast$ and constants couldn't be pairs anyway.

@@ -45,6 +45,17 @@ impl Sort {
             ))),
         }
     }
+
+    pub fn after_application(self) -> Result<Sort, ()> {
+        Ok(match self {
+            Sort::Function(contents) => contents.1,
+            Sort::Product(contents) => Sort::Product(Box::new((
+                contents.0.after_application()?,
+                contents.1.after_application()?,
+            ))),
+            Sort::Value => return Err(()),
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

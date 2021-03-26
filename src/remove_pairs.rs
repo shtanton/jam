@@ -1,6 +1,6 @@
 use crate::lambda_lift::{
-    Expression as LLExpression, ExpressionKind as LLExpressionKind, FnIdentifier,
-    Function as LLFunction, Identifier, Proposition as LLProposition,
+    Expression as LLExpression, FnIdentifier, Function as LLFunction, Identifier,
+    Proposition as LLProposition,
 };
 use crate::logic::Sort;
 
@@ -36,18 +36,11 @@ fn function_type(parameters: &Vec<(Identifier, Sort)>, ret_type: &Sort) -> Sort 
 
 fn param_tree_to_expression(tree: &Tree<(Identifier, Sort)>) -> LLExpression {
     match tree {
-        Tree::Leaf((id, sort)) => LLExpression {
-            kind: LLExpressionKind::Variable(*id),
-            typ: sort.clone(),
-        },
+        Tree::Leaf((id, sort)) => LLExpression::Variable(*id, sort.clone()),
         Tree::Branch(contents) => {
             let first = param_tree_to_expression(&contents.0);
             let second = param_tree_to_expression(&contents.1);
-            let typ = Sort::Product(Box::new((first.typ.clone(), second.typ.clone())));
-            LLExpression {
-                kind: LLExpressionKind::Tuple(Box::new((first, second))),
-                typ,
-            }
+            LLExpression::Tuple(Box::new((first, second)))
         }
     }
 }
@@ -74,23 +67,14 @@ fn remove_pair_parameters_from_sort(sort: Sort) -> Sort {
     }
 }
 
-fn generate_arg_tree(arg: LLExpression) -> Tree<LLExpression> {
-    match &arg.typ {
-        Sort::Product(contents) => {
-            let second_type = contents.1.clone();
-            Tree::Branch(Box::new((
-                generate_arg_tree(LLExpression {
-                    kind: LLExpressionKind::First(Box::new(arg.clone())),
-                    typ: contents.0.clone(),
-                }),
-                generate_arg_tree(LLExpression {
-                    kind: LLExpressionKind::Second(Box::new(arg)),
-                    typ: second_type,
-                }),
-            )))
-        }
+fn generate_arg_tree(arg: LLExpression) -> Result<Tree<LLExpression>, ()> {
+    Ok(match arg.typ()? {
+        Sort::Product(_) => Tree::Branch(Box::new((
+            generate_arg_tree(LLExpression::First(Box::new(arg.clone())))?,
+            generate_arg_tree(LLExpression::Second(Box::new(arg)))?,
+        ))),
         Sort::Value | Sort::Function(_) => Tree::Leaf(arg),
-    }
+    })
 }
 
 fn generate_pairless_application(
@@ -99,73 +83,41 @@ fn generate_pairless_application(
 ) -> Result<LLExpression, ()> {
     let mut application = fun;
     for arg in args.into_iter() {
-        let typ = if let Sort::Function(contents) = &application.typ {
-            contents.1.clone()
-        } else {
-            return Err(());
-        };
-        application = LLExpression {
-            kind: LLExpressionKind::Application(Box::new((application, arg))),
-            typ,
-        };
+        application = LLExpression::Application(Box::new((application, arg)));
     }
     Ok(application)
 }
 
 fn remove_pair_parameters_from_expression(expr: LLExpression) -> Result<LLExpression, ()> {
-    Ok(match expr.kind {
-        LLExpressionKind::Application(contents) => {
+    Ok(match expr {
+        LLExpression::Application(contents) => {
             let fun = remove_pair_parameters_from_expression(contents.0)?;
             let arg = remove_pair_parameters_from_expression(contents.1)?;
-            let arg_tree = generate_arg_tree(arg);
+            let arg_tree = generate_arg_tree(arg)?;
             generate_pairless_application(fun, arg_tree.to_vec())?
         }
-        LLExpressionKind::Ast | LLExpressionKind::Variable(_) => expr,
-        LLExpressionKind::Function(id) => LLExpression {
-            kind: LLExpressionKind::Function(id),
-            typ: remove_pair_parameters_from_sort(expr.typ),
-        },
-        LLExpressionKind::Call(constant, args) => LLExpression {
-            kind: LLExpressionKind::Call(
-                constant,
-                args.into_iter()
-                    .map(|arg| remove_pair_parameters_from_expression(arg))
-                    .collect::<Result<Vec<_>, ()>>()?,
-            ),
-            typ: expr.typ,
-        },
-        LLExpressionKind::First(arg) => {
-            let arg = remove_pair_parameters_from_expression(*arg)?;
-            let typ = if let Sort::Product(contents) = &arg.typ {
-                contents.0.clone()
-            } else {
-                return Err(());
-            };
-            LLExpression {
-                kind: LLExpressionKind::First(Box::new(arg)),
-                typ,
-            }
+        LLExpression::Ast | LLExpression::Variable(_, _) => expr,
+        LLExpression::Function(id, typ) => {
+            LLExpression::Function(id, remove_pair_parameters_from_sort(typ))
         }
-        LLExpressionKind::Second(arg) => {
+        LLExpression::Call(constant, args) => LLExpression::Call(
+            constant,
+            args.into_iter()
+                .map(|arg| remove_pair_parameters_from_expression(arg))
+                .collect::<Result<Vec<_>, ()>>()?,
+        ),
+        LLExpression::First(arg) => {
             let arg = remove_pair_parameters_from_expression(*arg)?;
-            let typ = if let Sort::Product(contents) = &arg.typ {
-                contents.1.clone()
-            } else {
-                return Err(());
-            };
-            LLExpression {
-                kind: LLExpressionKind::Second(Box::new(arg)),
-                typ,
-            }
+            LLExpression::First(Box::new(arg))
         }
-        LLExpressionKind::Tuple(contents) => {
+        LLExpression::Second(arg) => {
+            let arg = remove_pair_parameters_from_expression(*arg)?;
+            LLExpression::Second(Box::new(arg))
+        }
+        LLExpression::Tuple(contents) => {
             let first = remove_pair_parameters_from_expression(contents.0)?;
             let second = remove_pair_parameters_from_expression(contents.1)?;
-            let typ = Sort::Product(Box::new((first.typ.clone(), second.typ.clone())));
-            LLExpression {
-                kind: LLExpressionKind::Tuple(Box::new((first, second))),
-                typ,
-            }
+            LLExpression::Tuple(Box::new((first, second)))
         }
     })
 }
@@ -188,6 +140,60 @@ fn add_fn_tree_to_vec(fn_tree: LLFunctionTree, target: &mut Vec<LLFunction>) {
             add_fn_tree_to_vec(contents.1, target);
         }
     }
+}
+
+/// Replace all <t_1, t_2>t' with <t_1 t', t_2 t'> and all pi_i(t) t' with pi_i(t t')
+fn remove_applied_pairs_from_expression(expr: LLExpression) -> Result<LLExpression, ()> {
+    Ok(match expr {
+        LLExpression::Application(contents) => {
+            let fun = remove_applied_pairs_from_expression(contents.0)?;
+            let arg = remove_applied_pairs_from_expression(contents.1)?;
+            match fun {
+                LLExpression::Tuple(tcontents) => LLExpression::Tuple(Box::new((
+                    LLExpression::Application(Box::new((tcontents.0, arg.clone()))),
+                    LLExpression::Application(Box::new((tcontents.1, arg))),
+                ))),
+                LLExpression::First(parg) => {
+                    LLExpression::First(Box::new(LLExpression::Application(Box::new((*parg, arg)))))
+                }
+                LLExpression::Second(parg) => LLExpression::Second(Box::new(
+                    LLExpression::Application(Box::new((*parg, arg))),
+                )),
+                _ => return Err(()),
+            }
+        }
+        LLExpression::Ast | LLExpression::Function(_, _) | LLExpression::Variable(_, _) => expr,
+        LLExpression::Call(constant, args) => LLExpression::Call(
+            constant,
+            args.into_iter()
+                .map(|arg| remove_applied_pairs_from_expression(arg))
+                .collect::<Result<Vec<_>, ()>>()?,
+        ),
+        LLExpression::First(arg) => {
+            LLExpression::First(Box::new(remove_applied_pairs_from_expression(*arg)?))
+        }
+        LLExpression::Second(arg) => {
+            LLExpression::Second(Box::new(remove_applied_pairs_from_expression(*arg)?))
+        }
+        LLExpression::Tuple(contents) => LLExpression::Tuple(Box::new((
+            remove_applied_pairs_from_expression(contents.0)?,
+            remove_applied_pairs_from_expression(contents.1)?,
+        ))),
+    })
+}
+
+fn fn_tree_to_expression(tree: &Tree<LLFunction>) -> Result<LLExpression, ()> {
+    Ok(match tree {
+        Tree::Leaf(LLFunction {
+            id,
+            parameters,
+            body,
+        }) => LLExpression::Function(*id, function_type(parameters, &body.typ()?)),
+        Tree::Branch(contents) => LLExpression::Tuple(Box::new((
+            fn_tree_to_expression(&contents.0)?,
+            fn_tree_to_expression(&contents.1)?,
+        ))),
+    })
 }
 
 enum Tree<T> {
@@ -243,101 +249,67 @@ impl PairRemover {
         id
     }
 
-    fn generate_pairless_returns(&mut self, fun: LLFunction) -> LLFunctionTree {
+    fn generate_pairless_returns(&mut self, fun: LLFunction) -> Result<Tree<LLFunction>, ()> {
         let LLFunction {
             id,
-            body,
             parameters,
+            body,
         } = fun;
-        let LLExpression {
-            kind: body,
-            typ: body_type,
-        } = body;
-        let body_type = remove_pair_returns_from_sort(body_type);
-        if let Sort::Product(contents) = body_type {
-            let first_id = self.next_fn_id();
-            let second_id = self.next_fn_id();
-            let body_type = Sort::Product(contents.clone());
-            LLFunctionTree::Pair(Box::new((
-                self.generate_pairless_returns(LLFunction {
-                    id: first_id,
-                    parameters: parameters.clone(),
-                    body: LLExpression {
-                        kind: LLExpressionKind::First(Box::new(LLExpression {
-                            kind: body.clone(),
-                            typ: body_type.clone(),
-                        })),
-                        typ: contents.0,
-                    },
-                }),
-                self.generate_pairless_returns(LLFunction {
-                    id: second_id,
-                    parameters: parameters,
-                    body: LLExpression {
-                        kind: LLExpressionKind::Second(Box::new(LLExpression {
-                            kind: body,
-                            typ: body_type,
-                        })),
-                        typ: contents.1,
-                    },
-                }),
-            )))
-        } else {
-            LLFunctionTree::Function(LLFunction {
+        Ok(match body.typ()? {
+            Sort::Product(contents) => {
+                let first_id = self.next_fn_id();
+                let second_id = self.next_fn_id();
+                Tree::Branch(Box::new((
+                    self.generate_pairless_returns(LLFunction {
+                        id: first_id,
+                        parameters: parameters.clone(),
+                        body: LLExpression::First(Box::new(body.clone())),
+                    })?,
+                    self.generate_pairless_returns(LLFunction {
+                        id: second_id,
+                        parameters,
+                        body: LLExpression::Second(Box::new(body)),
+                    })?,
+                )))
+            }
+            _ => Tree::Leaf(LLFunction {
                 id,
                 parameters,
-                body: LLExpression {
-                    kind: body,
-                    typ: body_type,
-                },
-            })
-        }
+                body,
+            }),
+        })
     }
 
     fn remove_pair_returns(
         &mut self,
         mut prop: LLProposition,
-        mut fns: Vec<LLFunction>,
-    ) -> (LLProposition, Vec<LLFunction>) {
-        let new_fn_trees = fns.into_iter().map(|mut fun| {
-            fun.parameters = fun
-                .parameters
+        fns: Vec<LLFunction>,
+    ) -> Result<(LLProposition, Vec<LLFunction>), ()> {
+        let mut new_fns = Vec::new();
+        let mut reversed_fns = fns.into_iter().rev().collect::<Vec<_>>();
+        while let Some(fun) = reversed_fns.pop() {
+            let LLFunction {
+                id,
+                parameters,
+                body,
+            } = fun;
+            let parameters = parameters
                 .into_iter()
                 .map(|(id, sort)| (id, remove_pair_returns_from_sort(sort)))
                 .collect::<Vec<_>>();
-            self.generate_pairless_returns(fun)
-        });
-        let mut new_fns = Vec::new();
-        for fn_tree in new_fn_trees.into_iter() {
-            add_fn_tree_to_vec(fn_tree, &mut new_fns);
+            let fn_tree = self.generate_pairless_returns(LLFunction {
+                id,
+                parameters,
+                body,
+            })?;
+            let sub = fn_tree_to_expression(&fn_tree)?;
+            reversed_fns.iter_mut().for_each(|fun| {
+                fun.body.substitute(&sub, id);
+            });
+            prop.substitute(&sub, id);
+            fn_tree.add_to_vec(&mut new_fns);
         }
-        (prop, new_fns)
-    }
-
-    fn uncurry(&mut self, mut fun: LLFunction) -> LLFunction {
-        while let LLExpression {
-            kind: mut body_kind,
-            typ: Sort::Function(contents),
-        } = fun.body
-        {
-            let param_id = self.next_id();
-            fun.parameters.push((param_id, contents.0.clone()));
-            body_kind = LLExpressionKind::Application(Box::new((
-                LLExpression {
-                    kind: body_kind,
-                    typ: Sort::Function(contents.clone()),
-                },
-                LLExpression {
-                    kind: LLExpressionKind::Variable(param_id),
-                    typ: contents.0,
-                },
-            )));
-            fun.body = LLExpression {
-                kind: body_kind,
-                typ: contents.1,
-            };
-        }
-        fun
+        Ok((prop, new_fns))
     }
 
     fn generate_pairless_parameters(
@@ -402,8 +374,8 @@ impl PairRemover {
 
     fn remove_pair_parameters(
         &mut self,
-        mut prop: LLProposition,
-        mut fns: Vec<LLFunction>,
+        prop: LLProposition,
+        fns: Vec<LLFunction>,
     ) -> Result<(LLProposition, Vec<LLFunction>), ()> {
         let new_fns = fns
             .into_iter()
