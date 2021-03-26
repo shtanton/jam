@@ -99,22 +99,22 @@ impl Expression {
             }
             Expression::Call(_, args) => {
                 args.iter_mut().for_each(|arg| {
-                    arg.substitute_fn(expr, var_id);
+                    arg.substitute(expr, var_id);
                 });
             }
             Expression::Tuple(contents) => {
-                contents.0.substitute_fn(expr, var_id);
-                contents.1.substitute_fn(expr, var_id);
+                contents.0.substitute(expr, var_id);
+                contents.1.substitute(expr, var_id);
             }
             Expression::Application(contents) => {
-                contents.0.substitute_fn(expr, var_id);
-                contents.1.substitute_fn(expr, var_id);
+                contents.0.substitute(expr, var_id);
+                contents.1.substitute(expr, var_id);
             }
             Expression::First(arg) => {
-                arg.substitute_fn(expr, var_id);
+                arg.substitute(expr, var_id);
             }
             Expression::Second(arg) => {
-                arg.substitute_fn(expr, var_id);
+                arg.substitute(expr, var_id);
             }
         }
     }
@@ -187,7 +187,7 @@ impl LambdaLifter {
         LambdaLifter { _next_fn_id: 0 }
     }
 
-    fn next_fn_id(&mut self) -> FnIdentifier {
+    pub fn next_fn_id(&mut self) -> FnIdentifier {
         let id = self._next_fn_id;
         self._next_fn_id += 1;
         id

@@ -1,5 +1,6 @@
 use crate::lambda_lift::LambdaLifter;
 use crate::logic::ToLogic;
+use crate::remove_pairs::PairRemover;
 use crate::syntax::{
     Constant, Expression as SExpression, Predicate, Proposition as SProposition, Type as SType,
 };
@@ -509,6 +510,8 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
     let ast = analyzer
         .label_expression(&ast, env)
         .map_err(|_| "labelling error".to_string())?;
+    let mut next_id = analyzer.ident_gen.next();
+    let mut next_fn_id = 0;
     let applications = find_applications(&ast);
     let mut judgements = applications
         .into_iter()
@@ -525,17 +528,30 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
         .into_iter()
         .map(|(context, expr, typ)| {
             let mut to_logic = ToLogic::new(analyzer.ident_gen.next());
-            to_logic.type_judgement_to_logic(&expr, &typ, context)
+            let prop = to_logic.type_judgement_to_logic(&expr, &typ, context)?;
+            Ok((to_logic.next_id(), prop))
         })
         .collect::<Result<Vec<_>, ()>>()
         .map_err(|_| "error generating first order calculus propositions".to_string())?;
     let lambda_lifted_propositions = propositions
         .into_iter()
-        .map(|prop| {
+        .map(|(next_id, prop)| {
             let mut lambda_lifter = LambdaLifter::new();
-            lambda_lifter.lambda_lift(&prop)
+            let prop = lambda_lifter.lambda_lift(&prop);
+            (next_id, lambda_lifter.next_fn_id(), prop)
         })
         .collect::<Vec<_>>();
-    println!("{:#?}", lambda_lifted_propositions);
+    let pairless_propositions = lambda_lifted_propositions
+        .into_iter()
+        .map(|(next_id, next_fn_id, (prop, fns))| {
+            let mut pair_remover = PairRemover::new(next_id, next_fn_id);
+            let prop = pair_remover.remove_pairs(prop, fns)?;
+            Ok((pair_remover.next_id(), pair_remover.next_fn_id(), prop))
+        })
+        .collect::<Result<Vec<_>, ()>>()
+        .map_err(|_| "error removing pairs".to_string())?;
+    for prop in pairless_propositions.iter() {
+        println!("{:#?}", prop.2);
+    }
     Ok(ast)
 }

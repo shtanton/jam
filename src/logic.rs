@@ -104,7 +104,7 @@ impl ToLogic {
         ToLogic { _next_id }
     }
 
-    fn next_id(&mut self) -> u32 {
+    pub fn next_id(&mut self) -> u32 {
         let id = self._next_id;
         self._next_id += 1;
         id
