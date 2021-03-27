@@ -221,6 +221,7 @@ fn fn_tree_to_expression(tree: &Tree<LLFunction>) -> Result<LLExpression, ()> {
     })
 }
 
+#[derive(Clone)]
 pub enum Type {
     Value,
     Function(Box<(Type, Type)>),
@@ -257,11 +258,27 @@ impl fmt::Debug for Expression {
     }
 }
 
+impl Expression {
+    pub fn typ(&self) -> Result<Type, ()> {
+        Ok(match self {
+            Expression::Application(contents) => {
+                if let Type::Function(fcontents) = contents.0.typ()? {
+                    fcontents.1
+                } else {
+                    return Err(());
+                }
+            }
+            Expression::Ast | Expression::Call(_, _) => Type::Value,
+            Expression::Function(_, typ) | Expression::Variable(_, typ) => typ.clone(),
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct Function {
-    id: FnIdentifier,
-    parameters: Vec<(Identifier, Type)>,
-    body: Expression,
+    pub id: FnIdentifier,
+    pub parameters: Vec<(Identifier, Type)>,
+    pub body: Expression,
 }
 
 pub enum Proposition {
