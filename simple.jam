@@ -1,0 +1,1 @@
+((fn x: x:nat{(forall y: nat (> x y))} <(succ x) x>) (0))
