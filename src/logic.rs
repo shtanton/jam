@@ -3,7 +3,7 @@ use crate::semantic::{
     Proposition as SProposition, Type as SType, UnrefinedType as SUnrefinedType, UnrefinedType,
 };
 use crate::syntax::{Constant, Predicate};
-use im::Vector as ImVec;
+use im::{HashMap as ImHashMap, Vector as ImVec};
 
 pub type Identifier = u32;
 
@@ -117,6 +117,8 @@ impl ToLogic {
         mut context: SContext,
     ) -> Result<Proposition, ()> {
         Ok(if let Some((var_id, var_type)) = context.pop_front() {
+            let mut var_env = ImHashMap::new();
+            var_env.insert(var_id, var_type.unrefine());
             Proposition::Forall(
                 var_id,
                 Sort::from_type(&var_type),
@@ -125,6 +127,7 @@ impl ToLogic {
                         &SExpression {
                             kind: SExpressionKind::Variable(var_id),
                             typ: var_type.unrefine(),
+                            env: var_env,
                         },
                         &var_type,
                         ImVec::new(),
@@ -154,6 +157,7 @@ impl ToLogic {
                     let first = SExpression {
                         kind: SExpressionKind::First(Box::new(expr.clone())),
                         typ: first_unrefined,
+                        env: expr.env.clone(),
                     };
                     let left_prop =
                         self.type_judgement_to_logic(&first, &contents.0, ImVec::new())?;
@@ -165,6 +169,7 @@ impl ToLogic {
                             &SExpression {
                                 kind: SExpressionKind::Second(Box::new(expr.clone())),
                                 typ: second_unrefined,
+                                env: expr.env.clone(),
                             },
                             &right_type,
                             ImVec::new(),
@@ -175,12 +180,15 @@ impl ToLogic {
                     let var = SExpression {
                         kind: SExpressionKind::Variable(*id),
                         typ: contents.0.unrefine(),
+                        env: ImHashMap::new().update(*id, contents.0.unrefine()),
                     };
                     let left_prop =
                         self.type_judgement_to_logic(&var, &contents.0, ImVec::new())?;
+                    let right_env = expr.env.clone().union(var.env.clone());
                     let right_expr = SExpression {
                         kind: SExpressionKind::Application(Box::new((expr.clone(), var))),
                         typ: contents.1.unrefine(),
+                        env: right_env,
                     };
                     Proposition::Forall(
                         *id,
@@ -218,6 +226,7 @@ impl ToLogic {
                         &SExpression {
                             kind: SExpressionKind::Variable(*id),
                             typ: contents.0.unrefine(),
+                            env: ImHashMap::new().update(*id, contents.0.unrefine()),
                         },
                         &contents.0,
                         ImVec::new(),
@@ -257,21 +266,25 @@ impl ToLogic {
                                 SExpression {
                                     kind: SExpressionKind::First(Box::new(left.clone())),
                                     typ: first_type.clone(),
+                                    env: left.env.clone(),
                                 },
                                 SExpression {
                                     kind: SExpressionKind::First(Box::new(right.clone())),
                                     typ: first_type,
+                                    env: right.env.clone(),
                                 },
                             ))))?,
                             self.proposition_to_logic(&SProposition::Equal(Box::new((
                                 contents.1,
                                 SExpression {
+                                    env: left.env.clone(),
                                     kind: SExpressionKind::Second(Box::new(left)),
                                     typ: second_type.clone(),
                                 },
                                 SExpression {
-                                    kind: SExpressionKind::Second(Box::new(right)),
                                     typ: second_type,
+                                    env: right.env.clone(),
+                                    kind: SExpressionKind::Second(Box::new(right)),
                                 },
                             ))))?,
                         )))
@@ -280,6 +293,7 @@ impl ToLogic {
                         let var = SExpression {
                             kind: SExpressionKind::Variable(id),
                             typ: contents.0.unrefine(),
+                            env: ImHashMap::new().update(id, contents.0.unrefine()),
                         };
                         let return_type = contents.1.unrefine();
                         Proposition::Forall(
@@ -290,6 +304,7 @@ impl ToLogic {
                                 self.proposition_to_logic(&SProposition::Equal(Box::new((
                                     contents.1,
                                     SExpression {
+                                        env: left.env.clone().union(var.env.clone()),
                                         kind: SExpressionKind::Application(Box::new((
                                             left,
                                             var.clone(),
@@ -297,6 +312,7 @@ impl ToLogic {
                                         typ: return_type.clone(),
                                     },
                                     SExpression {
+                                        env: right.env.clone().union(var.env.clone()),
                                         kind: SExpressionKind::Application(Box::new((
                                             right,
                                             var.clone(),
@@ -329,6 +345,7 @@ impl ToLogic {
                 let var = SExpression {
                     kind: SExpressionKind::Variable(id),
                     typ: contents.1.unrefine(),
+                    env: ImHashMap::new().update(id, contents.1.unrefine()),
                 };
                 Proposition::Forall(
                     id,

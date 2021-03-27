@@ -81,6 +81,7 @@ pub enum ExpressionKind {
 pub struct Expression {
     pub kind: ExpressionKind,
     pub typ: UnrefinedType,
+    pub env: ImHashMap<Identifier, UnrefinedType>,
 }
 
 impl Expression {
@@ -415,6 +416,7 @@ impl Analyzer {
             SExpression::Ast => Expression {
                 kind: ExpressionKind::Ast,
                 typ: UnrefinedType::One,
+                env: ImHashMap::new(),
             },
             SExpression::Abstraction(param_symbol, param_type, expr) => {
                 let param_type = self.label_type(param_type, env.clone())?;
@@ -432,6 +434,7 @@ impl Analyzer {
                 let unrefined_arg_type = param_type.unrefine();
                 let body_typ = body.typ.clone();
                 Expression {
+                    env: body.env.without(&id),
                     kind: ExpressionKind::Abstraction(id, param_type, Box::new(body)),
                     typ: UnrefinedType::Function(Box::new((unrefined_arg_type, body_typ))),
                 }
@@ -442,6 +445,7 @@ impl Analyzer {
                 if let UnrefinedType::Function(type_contents) = &labelled_fun.typ {
                     let typ = type_contents.1.clone();
                     Expression {
+                        env: labelled_fun.env.clone().union(labelled_arg.env.clone()),
                         kind: ExpressionKind::Application(Box::new((labelled_fun, labelled_arg))),
                         typ: typ,
                     }
@@ -455,6 +459,7 @@ impl Analyzer {
                     .map(|arg| self.label_expression(arg, env.clone()))
                     .collect::<Result<Vec<_>, ()>>()?;
                 Expression {
+                    env: ImHashMap::unions(args.iter().map(|arg| arg.env.clone())),
                     kind: ExpressionKind::Call(*constant, args),
                     typ: constant_unrefined_return_type(&constant),
                 }
@@ -464,8 +469,9 @@ impl Analyzer {
                 if let UnrefinedType::Product(type_contents) = &arg.typ {
                     let typ = type_contents.0.clone();
                     Expression {
+                        env: arg.env.clone(),
                         kind: ExpressionKind::First(Box::new(arg)),
-                        typ: typ,
+                        typ,
                     }
                 } else {
                     return Err(());
@@ -476,6 +482,7 @@ impl Analyzer {
                 if let UnrefinedType::Product(type_contents) = &arg.typ {
                     let typ = type_contents.1.clone();
                     Expression {
+                        env: arg.env.clone(),
                         kind: ExpressionKind::Second(Box::new(arg)),
                         typ,
                     }
@@ -488,6 +495,7 @@ impl Analyzer {
                 let second = self.label_expression(second, env)?;
                 let typ = UnrefinedType::Product(Box::new((first.typ.clone(), second.typ.clone())));
                 Expression {
+                    env: first.env.clone().union(second.env.clone()),
                     kind: ExpressionKind::Tuple(Box::new((first, second))),
                     typ,
                 }
@@ -495,9 +503,12 @@ impl Analyzer {
             SExpression::Variable(symbol) => {
                 let id = env.get(symbol).ok_or(())?;
                 let variable = self.symbol_table.get(id).ok_or(())?;
+                let mut var_env = ImHashMap::new();
+                var_env.insert(*id, variable.typ.clone());
                 Expression {
                     kind: ExpressionKind::Variable(*id),
                     typ: variable.typ.clone(),
+                    env: var_env,
                 }
             }
         })
@@ -510,8 +521,7 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
     let ast = analyzer
         .label_expression(&ast, env)
         .map_err(|_| "labelling error".to_string())?;
-    let mut next_id = analyzer.ident_gen.next();
-    let mut next_fn_id = 0;
+    println!("{:#?}", ast);
     let applications = find_applications(&ast);
     let mut judgements = applications
         .into_iter()
