@@ -563,7 +563,7 @@ impl PairRemover {
             })?;
             let sub = fn_tree_to_expression(&fn_tree)?;
             reversed_fns.iter_mut().for_each(|fun| {
-                fun.body.substitute(&sub, id);
+                fun.body.substitute_fn(&sub, id);
             });
             prop.substitute_fn(&sub, id);
             fn_tree.add_to_vec(&mut new_reversed_fns);

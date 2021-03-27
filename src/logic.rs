@@ -81,6 +81,7 @@ pub enum Proposition {
 pub struct Expression {
     pub kind: ExpressionKind,
     pub sort: Sort,
+    pub env: ImHashMap<Identifier, Sort>,
 }
 
 #[derive(Clone, Debug)]
@@ -391,6 +392,12 @@ impl ToLogic {
                 ))),
             },
             sort: Sort::from_unrefined_type(&expr.typ),
+            env: expr
+                .env
+                .clone()
+                .into_iter()
+                .map(|(id, typ)| (id, Sort::from_unrefined_type(&typ)))
+                .collect(),
         })
     }
 }

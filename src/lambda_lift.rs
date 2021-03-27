@@ -245,13 +245,23 @@ impl LambdaLifter {
         match &expr.kind {
             LExpressionKind::Abstraction(id, param_sort, body) => {
                 let fn_id = self.next_fn_id();
+                let mut parameters = expr.env.clone().into_iter().collect::<Vec<_>>();
+                let args = parameters
+                    .iter()
+                    .map(|(id, sort)| Expression::Variable(*id, sort.clone()))
+                    .collect::<Vec<_>>();
+                parameters.push((*id, param_sort.clone()));
                 let body = self.lambda_lift_expression(body, fns);
                 fns.push(Function {
                     id: fn_id,
-                    parameters: vec![(*id, param_sort.clone())],
+                    parameters,
                     body,
                 });
-                Expression::Function(fn_id, expr.sort.clone())
+                let mut fun = Expression::Function(fn_id, expr.sort.clone());
+                for arg in args.into_iter() {
+                    fun = Expression::Application(Box::new((fun, arg)));
+                }
+                fun
             }
             LExpressionKind::Application(contents) => Expression::Application(Box::new((
                 self.lambda_lift_expression(&contents.0, fns),

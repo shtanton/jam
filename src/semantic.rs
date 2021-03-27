@@ -521,7 +521,6 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
     let ast = analyzer
         .label_expression(&ast, env)
         .map_err(|_| "labelling error".to_string())?;
-    println!("{:#?}", ast);
     let applications = find_applications(&ast);
     let mut judgements = applications
         .into_iter()
