@@ -1,2 +1,5 @@
 /target
 /modern_compiler_implementation_in_C/
+gc
+gc.*
+*.pdf
