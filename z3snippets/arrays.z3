@@ -1,0 +1,6 @@
+(assert (forall ((f (Array Int Int)))
+	(not (forall ((x Int))
+		(= (select f x) x)
+	))
+))
+(check-sat)

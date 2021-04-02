@@ -1,0 +1,93 @@
+\documentclass[12pt,a4paper,titlepage]{article}
+\usepackage{mathtools}
+\usepackage{stmaryrd}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{array}
+\usepackage[margin=1in]{geometry}
+
+\newcommand{\pipe}{\ |\ }
+
+\title{Defining the Language}
+\author{Charlie Stanton}
+
+\begin{document}
+    \maketitle
+
+    \section{Inspiration}
+    The language is based on the calculus defined and explored in this paper:
+
+    \url{https://www.researchgate.net/profile/Ewen-Denney/publication/2406398_Refining_Refinement_Types/links/56d3210e08ae059e376122e4/Refining-Refinement-Types.pdf}
+
+    Which in turn is based on the simply typed lambda calculus with product types, $\lambda^{\times \rightarrow}$.
+
+    \section{Syntax}
+    The language has 3 fundamental constructs
+
+    \begin{itemize}
+        \item Expressions which evaluate to values at runtime
+        \item Types which restrict the possible values that an expression can have
+        \item Propositions which can be used in types for much finer control over the type restrictions than most languages offer
+    \end{itemize}
+
+    These are defined using the following grammar
+
+    \renewcommand{\arraystretch}{2}
+    \begin{tabular}{l>{$}c<{$}>{$}c<{$}}
+        Expressions & t \coloneqq&
+        x \pipe (k\ t_1\ ...\ t_n) \pipe \ast \pipe <t_1\ t_2> \pipe (fn\ x:\phi\ t) \pipe (\pi_i\ t) \pipe (t\ t')\\
+        Types & \phi \coloneqq&
+        \textbf{1} \pipe \gamma \pipe <x:\phi\ \psi> \pipe (fn\ x:\phi\ \psi) \pipe x:\phi\{P\}\\
+        Propositions & P \coloneqq&
+        false \pipe (=>\ P\ Q) \pipe (forall\ x:\phi\ P) \pipe (F\ t_1\ ...\ t_n)\\
+        &&\pipe (=\ \phi\ t_1\ t_2) \pipe (:>\ \phi\ \psi)
+    \end{tabular}
+    \renewcommand{\arraystretch}{1}
+
+    \section{Operational Semantics}
+    The operational semantics of the language match that of the simply typed lambda calculus with product types.
+    Note that the language is call-by-name, which greatly simplifies the type checker.
+
+    \renewcommand{\arraystretch}{2}
+    \begin{tabular}{>{$}r<{$}@{ $\rightarrow_\beta$ }>{$}l<{$}}
+        ((fn\ x:\phi\ t)\ t') & t[t'/x]\\
+        (\pi_i\ <t_1\ t_2>) & t_i\\
+    \end{tabular}
+    \renewcommand{\arraystretch}{1}
+
+    Because of the similarity to the simply typed lambda calculus, it is easy to see that any term which can be
+    typed must be strongly normalizing, and thus, all functions are total.
+    The semantics of propositions are simply those of first order logic, which I won't repeat here,
+    with the exception of $(:> \phi \psi)$ which means that $\phi$ is a supertype of $\psi$.
+
+    \section{Typing rules}
+    The typing rules of the language are formally defined in the appendix of the paper references earlier.
+    As well as the formal rules, we can also assign a more practical meaning to the typing judgements.
+    For these to make sense we need a notion of an environment which can be accepted by a context $\Gamma$.
+    An environment is a value for every variable in the context, and it is accepted by the context of each
+    value is accepted by the type given to it by the context.
+
+    \renewcommand{\arraystretch}{2}
+    \begin{tabular}{>{$}r<{$}p{0.7\textwidth}}
+        \Gamma \vdash t : \phi &
+        For any environment that is accepted by $\Gamma$, evaluating $t$ will produce a value which is acceptable
+        to $\phi$. Also any arguments to applications of functions, constants, $\pi_i$ or predicates have values
+        which are acceptable to the type guards on those applications.
+        \\
+        \Gamma \vdash P &
+        $P$ is true for any environment that is accepted by $\Gamma$.
+        \\
+    \end{tabular}
+    \renewcommand{\arraystretch}{1}
+
+    The types $<x:\phi\ \psi>$ and $(fn\ x:\phi\ \psi)$ can both be reduced to simple types with refinements
+    that will accept the same set of values.
+    In fact, any type can be written as $x:\sigma\{P\}$ where $\sigma$ is a simple type.
+    A type $x:\sigma\{P\}$ accepts the value of $t$ if both:
+    \begin{itemize}
+        \item In the simply typed lambda calculus, we have that $\sigma$ accepts $t$.
+        \item The proposition $P[t/x]$ is true.
+    \end{itemize}
+    The extra condition that the proposition must be true is the only thing that separates the refinement typed
+    language from a simply typed language, but it is extremely powerful.
+\end{document}

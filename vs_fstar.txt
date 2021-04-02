@@ -1,0 +1,50 @@
+F* is really complicated and has a huge variety of use cases and features.
+This leads me to think that jam should aim to be much much simpler, allowing for much faster learning and development without sacrificing too much expressiveness.
+F*'s documentation seems a bit lacking, quite possibly as a result of how large and complicated the language is.
+
+Idea: Unify the syntax of types and values and focus more on a pointfree style
+Type functions are different:
+In F*:
+
+type refine (a:Type) (phi:(a -> Type)): Type = x:a{phi(x)}
+
+
+type exclude (a:Type) (phi:(a -> Type)): Type = refine a (fun x -> phi x ==> false)
+type notpositive = exclude int (fun x -> 0 < x)
+type notnegative = refine int (fun x -> 0 <= x)
+val flipint: notpositive -> notnegative
+let flipint x = 0-x
+
+In jam:
+
+(let [
+    (exclude _
+      (fn [(a anytype) (phi ([a] bool))] anytype
+        (refine a (fn [(x a)] bool (! (phi x))))))
+    (notpositive anytype
+      (exclude int (< 0)))
+    (notnegative anytype
+      (refine int (<= 0)))
+    (flipint _
+      (fn [(x notpositive)] notnegative (- 0 x)))]
+  (flipint -5))
+
+Alternatively
+
+(let [
+    (exclude _
+      (fn [(a anytype) (phi ([a] bool))] anytype
+        (typediff a (refine a phi))))
+    (notpositive anytype
+      (exclude int (< 0)))
+    (notnegative anytype
+      (typeunion (typediff int notpositive) (singletontype 0)))
+    (flipint _
+      (fn [(x notpositive)] notnegative (- 0 x)))]
+  (flipint -5))
+
+Also I haven't been able to find a way to write functions that combine existing types into new ones, which would include functions like typeunion, typeintersect, typediff etc.
+One potential situation where this could be useful is if you have external functions from libraries, one wanting an argument of type A and the other type B, the programmer might want to
+accept an argument of type (typeunion A B) and then check if it belongs to A and pass it into the first function if it does, the second if not.
+As far as I can tell the typeunion function can't exist in F* but could exist in a language built on top of F* since jam can track the predicates on all the types and typeunion is the
+same as a binary OR of the predicates on those types.

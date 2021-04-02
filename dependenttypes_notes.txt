@@ -1,0 +1,7 @@
+Static dependent type checking isn't decidable so it needs to be restricted
+Restrictions around dependent types that other languages have:
+- Only total functions are programmable (agda)
+- Only for checking certain constraints like array bound checking (xi, pfenning)
+- Only types representable as total refinement types are programmable
+
+Dependent types are definitely not what I want to use

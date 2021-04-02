@@ -1,0 +1,30 @@
+My language would function largely as a preprocessor for F* that handles and removes all of the type arguments
+
+(let [
+		(even type (typerefine int (fn [(x int)] bool (== (% x 2) 0))))
+		(odd type (typediff int even))
+		(int2 type (typeunion even odd))
+		(x even 6)
+		(y int2 13)]
+	(+ x y))
+
+when translating to F* types are stored in the compiler as a supertype and a refinement function, such as int and (fn [(x int)] bool (== (% x 2) 0))
+
+evenFn: (fn [(x int)] bool (== (% x 2) 0))
+even: int, evenFn
+oddFn: (fn [(x int)] bool (and true (not (evenFn x))))
+odd: int, oddFn
+int2Fn: (fn [(x int)] bool (or (evenFn x) (oddFn x)))
+int2: int, int2Fn
+
+these get translated to F*
+
+val evenFn: int -> bool
+let evenFn x = x%2==0
+type even = x:int{evenFn x}
+val oddFn: int -> bool
+let oddFn x = true && (! (evenFn x))
+type odd = x:int{oddFn x}
+val int2Fn: int -> bool
+let int2Fn x = (oddFn x) || (evenFn x)
+type int2 = x:int{int2Fn x}
