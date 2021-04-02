@@ -65,13 +65,12 @@ x:$xt -> xt: match xt {
 	bool -> true,
 }
 
-Henkin models
-
 I tried to implement the typing rules as they are, but found that they are undecidable, thus I chose to reduce the type checking to logic which is then handled by an SMT solver.
 When translating to SMT anonymous functions, pairs, functional parameters and returning function values aren't possible in Z3 so I use lambda lifting, some pair mapping thing, specialization and uncurrying to remove them without changing the semantics of the program.
 
-Questions:
-- Should I implement recursion next, or a y combinator, or some iterative functions?
+Defunctionalising doesn't work because quantifier variables can be functions which could be arguments which I couldn't find a way to remove.
+
+Henkin semantics might be a formal definition of the classical logic I'm using
 
 Answers:
 - compilers: Appel
@@ -90,4 +89,6 @@ https://www.lfcs.inf.ed.ac.uk/reports/99/ECS-LFCS-99-412/ECS-LFCS-99-412.pdf Den
 https://www.researchgate.net/profile/Ewen_Denney/publication/2406398_Refining_Refinement_Types/links/56d3210e08ae059e376122e4.pdf Denney 1997
 https://link.springer.com/chapter/10.1007/978-0-387-35358-6_13 Denney in a book
 https://digitalcollections.ohsu.edu/concern/etds/5d86p055p?locale=en
-
+https://ezproxy-prd.bodleian.ox.ac.uk:2120/content/pdf/10.1007/s10817-007-9085-y.pdf Translating HOL to FOL
+http://theory.stanford.edu/~barrett/pubs/BREO+19.pdf Extending SMT to HOL
+https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.232.1234&rep=rep1&type=pdf Extending sledgehammer with SMT solvers

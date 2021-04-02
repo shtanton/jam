@@ -236,6 +236,18 @@ impl fmt::Debug for Type {
     }
 }
 
+impl Type {
+    pub fn args(mut self) -> Vec<Type> {
+        let mut args = Vec::new();
+        while let Type::Function(contents) = self {
+            args.push(contents.0);
+            self = contents.1;
+        }
+        args
+    }
+}
+
+#[derive(Clone)]
 pub enum Expression {
     Ast,
     Variable(Identifier, Type),
@@ -272,13 +284,43 @@ impl Expression {
             Expression::Function(_, typ) | Expression::Variable(_, typ) => typ.clone(),
         })
     }
+
+    pub fn substitute(&mut self, expr: &Expression, target: Identifier) {
+        match self {
+            Expression::Variable(id, _) => {
+                if *id == target {
+                    *self = expr.clone();
+                }
+            }
+            Expression::Application(contents) => {
+                contents.0.substitute(expr, target);
+                contents.1.substitute(expr, target);
+            }
+            Expression::Ast | Expression::Function(_, _) => {}
+            Expression::Call(_, args) => {
+                args.iter_mut().for_each(|arg| {
+                    arg.substitute(expr, target);
+                });
+            }
+        }
+    }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Function {
     pub id: FnIdentifier,
     pub parameters: Vec<(Identifier, Type)>,
     pub body: Expression,
+}
+
+impl Function {
+    pub fn typ(&self) -> Result<Type, ()> {
+        let mut typ = self.body.typ()?;
+        for (_, param_type) in self.parameters.iter().rev() {
+            typ = Type::Function(Box::new((param_type.clone(), typ)));
+        }
+        Ok(typ)
+    }
 }
 
 pub enum Proposition {
@@ -561,7 +603,7 @@ impl PairRemover {
         mut prop: LLProposition,
         fns: Vec<LLFunction>,
     ) -> Result<(LLProposition, Vec<LLFunction>), ()> {
-        let mut new_reversed_fns = Vec::new();
+        let mut new_fns = Vec::new();
         let mut reversed_fns = fns.into_iter().rev().collect::<Vec<_>>();
         while let Some(fun) = reversed_fns.pop() {
             let LLFunction {
@@ -583,9 +625,8 @@ impl PairRemover {
                 fun.body.substitute_fn(&sub, id);
             });
             prop.substitute_fn(&sub, id);
-            fn_tree.add_to_vec(&mut new_reversed_fns);
+            fn_tree.add_to_vec(&mut new_fns);
         }
-        let new_fns = new_reversed_fns.into_iter().rev().collect();
         Ok((remove_pair_returns_from_proposition(prop), new_fns))
     }
 
