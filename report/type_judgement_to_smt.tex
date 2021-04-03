@@ -1,0 +1,151 @@
+\documentclass[12pt,a4paper,titlepage]{article}
+\usepackage{mathtools}
+\usepackage{stmaryrd}
+\usepackage{amssymb}
+\usepackage[margin=1in]{geometry}
+\newcommand{\lnc}[1]{Logic(\langle \rangle \vdash #1)}
+\newcommand{\triple}[3]{\langle \texttt{#1} , \texttt{#2} , \texttt{#3} \rangle}
+
+\title{Type Checking The Refinement Typed Calculus With An SMT Solver}
+\author{Charlie Stanton}
+
+\begin{document}
+    \maketitle
+
+    \section{Starting Calculus}
+    The language I defined earlier with $\gamma \coloneqq \{Bool\}$.
+
+    \section{Translation to SMT}
+    First I lambda lift $\lambda$-abstractions anywhere in the typing judgement.
+    This can be done entirely before the translation to SMT happens using a relation $\Rightarrow_{LL}$ which I define.
+
+    $\Gamma, x: \phi[\lambda y: \phi' . u], \Gamma' \vdash t: \psi \Rightarrow_{LL}
+    \Gamma, f: \Pi_{y: \phi'} (z: \tau) z =_\tau u, x: \phi[f], \Gamma' \vdash t: \psi$
+
+    Where $\tau = SimpleTypeOf(u)$.
+
+    $\Gamma \vdash t[\lambda x: \phi . u]: \psi \Rightarrow_{LL}
+    \Gamma, f: \Pi_{x: \phi} (y: \tau) y =_\tau u \vdash t[f]: \psi$
+
+    Where $\tau = SimpleTypeOf(u)$.
+
+    $\Gamma \vdash t: \psi[\lambda x: \phi . u] \Rightarrow_{LL}
+    \Gamma, f: \Pi_{x: \phi} (y: \tau) y =_\tau u \vdash t: \psi[f]$
+
+    Where $\tau = SimpleTypeOf(u)$.
+
+    Next I define $Logic$ recursively.
+    I'm using the SMT-LIB2 front-end syntax for my SMT program, but the implementation will be working with
+    a library to interface with Z3 instead of generating a program as a string.
+
+    $Logic(x: \phi, \Gamma \vdash t: \psi) \coloneqq$
+    \begin{verbatim}
+        (declare-const x T)
+        (assert P)
+        L
+    \end{verbatim}
+    Where $\triple{x}{T}{P} = Simplify(\phi)$ and $L = Logic(\Gamma \vdash t: \psi)$.
+
+    $\lnc{t: \phi} \coloneqq$
+    \begin{verbatim}
+        (assert (not Q))
+        (check-sat)
+        (get-model)
+    \end{verbatim}
+    Where $Q = P[t/x]$ and $\triple{x}{\_}{P} = Simplify(\phi)$.
+
+    I now define $Simplify$ which was used in the definition of $Logic$.
+    Note that in the implementation, the simplified types will be in a recursive data structure and would
+    be given unique identifiers later on.
+
+    $Simplify(\textbf{1}) \coloneqq \triple{x}{one}{true}$
+
+    $Simplify(T) \coloneqq \triple{x}{T}{true}$ where $T \in \gamma$
+
+    $Simplify(\Sigma_{x:\phi} \psi) \coloneqq
+    \triple{z}{TxU}{(and P[(first z) / x] Q[(first z) / x][(second z) / y])}$
+    where $\triple{x}{T}{P} = Simplify(\phi)$ and $\triple{y}{U}{Q} = Simplify(\psi)$.
+
+    $Simplify(\Pi_{x: \phi} \psi) \coloneqq
+    \triple{f}{T->U}{(forall ((x T)) (=> P Q[(apply\_T->U f x) / y]))}$
+    where $\triple{x}{T}{P} = Simplify(\phi)$ and $\triple{y}{U}{Q} = Simplify$.
+
+    $Simplify((x: \phi)P) \coloneqq
+    \triple{x}{T}{(and P' Q)}$
+    where $\triple{x}{T}{Q} = Simplify(\phi)$ and $P' = Proposition(P)$.
+
+    I now define $Proposition$.
+
+    $Proposition(false) \coloneqq \texttt{false}$
+
+    $Proposition(P \supset Q) \coloneqq \texttt{(=> P Q)}$
+    where $\texttt{P} = Proposition(P)$ and $\texttt{Q} = Proposition(Q)$
+
+    $Proposition(\forall x: \phi . P) \coloneqq \texttt{(forall ((x T)) (=> Q P))}$
+    where $\triple{x}{T}{Q} = Simplify(\phi)$ and $\texttt{P} = Proposition(P)$
+
+    $Proposition(F(t_1, ..., t_n)) \coloneqq \texttt{(F t1 ... tn)}$
+    where $\texttt{ti} = Term(t_i)$
+
+    $Proposition(t =_\textbf{1} t') \coloneqq P$
+    where
+
+    $\texttt{P} = \begin{cases}
+        \texttt{true} & \text{if } SimpleTypeOf(t)=\textbf{1} \land SimpleTypeOf(t)=\textbf{1}\\
+        \texttt{false} & \text{otherwise}
+    \end{cases}$
+
+    $Proposition(t =_T t') \coloneqq P$
+    where $T \in \gamma$, $\texttt{t} = Term(t)$, $\texttt{t'} = Term(t')$ and
+
+    $\texttt{P} = \begin{cases}
+        \texttt{(= t t')} & \text{if } SimpleTypeOf(t)=T \land SimpleTypeOf(t)=T\\
+        \texttt{false} & \text{otherwise}
+    \end{cases}$
+
+    $Proposition(t =_{\Sigma_{x: \phi} \psi} t') \coloneqq
+    \texttt{(and P Q)}$ where
+    $\texttt{P} = Proposition(\pi_1 (t) =_\phi \pi_2 (t'))$ and
+    $\texttt{Q} = Proposition(\pi_2 (t) =_{\psi[t/x]} \pi_2 (t'))$
+
+    $Proposition(t =_{\Pi_{x: \phi} \psi} t') \coloneqq
+    \texttt{(forall ((x T)) (=> P Q))}$
+    where $\triple{x}{T}{P} = Simplify(\phi)$ and $\texttt{Q} = Proposition(tx =_\psi t'x)$
+
+    $Proposition(t =_{(x: \phi)P} t') \coloneqq$
+
+    $\begin{cases}
+        \texttt{(and (and P[t/x] P'[t'/x]) Q)} & \text{if } SimpleTypeOf(t)=SimpleTypeOf(t')=T\\
+        \texttt{false} & \text{otherwise}
+    \end{cases}$
+    where $\triple{\_}{T}{\_} = Simplify(\phi)$,
+    $\texttt{P} = Proposition(P)$,
+    $\texttt{Q} = Proposition(t =_\phi t')$
+
+    $Proposition(\phi \sqsubseteq \psi) \coloneqq$
+
+    $\begin{cases}
+        \texttt{(forall ((x T)) (=> Q P))} & \text{if } T=U\\
+        \texttt{false} & \text{otherwise}
+    \end{cases}$
+
+    where $\triple{x}{T}{P} = Simplify(\phi)$ and $\triple{x}{U}{Q} = Simplify(\psi)$
+
+    I now define $Term$.
+
+    $Term(x) \coloneqq \texttt{x}$
+
+    $Term(\ast) \coloneqq \texttt{ast}$
+
+    $Term(k(t_1, ..., t_n)) \coloneqq \texttt{(k t1 ... tn)}$ where $\texttt{ti} = Term(t_i)$
+
+    $Term(\langle t, t' \rangle) \coloneqq \texttt{(pair t t')}$
+    where $\texttt{t} = Term(t)$ and $\texttt{t'} = Term(t')$
+
+    $Term(\pi_1 (t)) \coloneqq \texttt{(first t)}$ where $\texttt{t} = Term(t)$
+
+    $Term(\pi_2 (t)) \coloneqq \texttt{(second t)}$ where $\texttt{t} = Term(t)$
+
+    $Term(t\ t') \coloneqq \texttt{(apply\_T t t')}$
+    where $\texttt{t} = Term(t)$, $\texttt{t'} = Term(t')$ and $\texttt{T} = SimpleTypeOf(t)$
+\end{document}
