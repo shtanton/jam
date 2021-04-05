@@ -1,6 +1,4 @@
-use crate::lambda_lift::LambdaLifter;
-use crate::logic::ToLogic;
-use crate::remove_pairs::PairRemover;
+use crate::lambda_lift::lift;
 use crate::syntax::{
     Constant, Expression as SExpression, Predicate, Proposition as SProposition, Type as SType,
 };
@@ -13,7 +11,7 @@ pub struct IdentifierGenerator {
     next: Identifier,
 }
 impl IdentifierGenerator {
-    fn next(&mut self) -> Identifier {
+    pub fn next(&mut self) -> Identifier {
         let n = self.next;
         self.next += 1;
         n
@@ -23,6 +21,12 @@ impl Default for IdentifierGenerator {
     fn default() -> IdentifierGenerator {
         IdentifierGenerator { next: 0 }
     }
+}
+
+pub struct Judgement {
+    pub context: Vec<(Identifier, Type)>,
+    pub expression: Expression,
+    pub typ: Type,
 }
 
 #[derive(Clone, Debug)]
@@ -124,7 +128,6 @@ impl Expression {
 pub enum UnrefinedType {
     One,
     Bool,
-    Nat,
     Product(Box<(UnrefinedType, UnrefinedType)>),
     Function(Box<(UnrefinedType, UnrefinedType)>),
 }
@@ -140,7 +143,6 @@ pub struct Variable {
 pub enum Type {
     One,
     Bool,
-    Nat,
     Product(Identifier, Box<(Type, Type)>),
     Function(Identifier, Box<(Type, Type)>),
     Refinement(Identifier, Box<Type>, Proposition),
@@ -149,7 +151,7 @@ pub enum Type {
 impl Type {
     pub fn substitute(&mut self, expr: &ExpressionKind, id: Identifier) {
         match self {
-            Type::One | Type::Bool | Type::Nat => {}
+            Type::One | Type::Bool => {}
             Type::Product(left_id, contents) => {
                 contents.0.substitute(expr, id);
                 if *left_id != id {
@@ -175,7 +177,6 @@ impl Type {
         match self {
             Type::One => UnrefinedType::One,
             Type::Bool => UnrefinedType::Bool,
-            Type::Nat => UnrefinedType::Nat,
             Type::Product(_, contents) => {
                 UnrefinedType::Product(Box::new((contents.0.unrefine(), contents.1.unrefine())))
             }
@@ -197,8 +198,6 @@ pub struct Environment {
 
 fn constant_unrefined_return_type(constant: &Constant) -> UnrefinedType {
     match constant {
-        Constant::Succ => UnrefinedType::Nat,
-        Constant::Zero => UnrefinedType::Nat,
         Constant::True => UnrefinedType::Bool,
         Constant::False => UnrefinedType::Bool,
     }
@@ -357,7 +356,6 @@ impl Analyzer {
         Ok(match typ {
             SType::One => Type::One,
             SType::Bool => Type::Bool,
-            SType::Nat => Type::Nat,
             SType::Product(symbol, first, second) => {
                 let first = self.label_type(first, env.clone())?;
                 let id = self.ident_gen.next();
@@ -525,42 +523,28 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
     let mut judgements = applications
         .into_iter()
         .map(
-            |(context, fun, arg)| -> Result<(Context, Expression, Type), ()> {
+            |(context, fun, arg)| {
                 let typ = arg_type(&fun, context.clone(), ImVec::default())?;
-                Ok((context, arg, typ))
+                Ok(Judgement {
+                    context: context.into_iter().collect(),
+                    expression: arg,
+                    typ,
+                })
             },
         )
         .collect::<Result<Vec<_>, ()>>()
         .map_err(|_| "error generating typing judgements".to_string())?;
-    judgements.push((ImVec::new(), ast.clone(), Type::Nat));
-    let propositions = judgements
+    judgements.push(Judgement {
+        context: Vec::new(),
+        expression: ast.clone(),
+        typ: Type::Bool,
+    });
+    let judgements = judgements
         .into_iter()
-        .map(|(context, expr, typ)| {
-            let mut to_logic = ToLogic::new(analyzer.ident_gen.next());
-            let prop = to_logic.type_judgement_to_logic(&expr, &typ, context)?;
-            Ok((to_logic.next_id(), prop))
-        })
-        .collect::<Result<Vec<_>, ()>>()
-        .map_err(|_| "error generating first order calculus propositions".to_string())?;
-    let lambda_lifted_propositions = propositions
-        .into_iter()
-        .map(|(next_id, prop)| {
-            let mut lambda_lifter = LambdaLifter::new();
-            let prop = lambda_lifter.lambda_lift(&prop);
-            (next_id, lambda_lifter.next_fn_id(), prop)
+        .map(|judgement| {
+            lift(judgement, &mut analyzer.ident_gen)
         })
         .collect::<Vec<_>>();
-    let pairless_propositions = lambda_lifted_propositions
-        .into_iter()
-        .map(|(next_id, next_fn_id, (prop, fns))| {
-            let mut pair_remover = PairRemover::new(next_id, next_fn_id);
-            let prop = pair_remover.remove_pairs(prop, fns)?;
-            Ok((pair_remover.next_id(), pair_remover.next_fn_id(), prop))
-        })
-        .collect::<Result<Vec<_>, ()>>()
-        .map_err(|_| "error removing pairs".to_string())?;
-    for prop in pairless_propositions.iter() {
-        println!("{:#?}", prop.2);
-    }
+    println!("{:#?}", judgements);
     Ok(ast)
 }

@@ -11,7 +11,6 @@ use nom::{
 pub enum Type {
     One,
     Bool,
-    Nat,
     Product(Identifier, Box<Type>, Box<Type>),
     Function(Identifier, Box<Type>, Box<Type>),
     Refinement(Identifier, Box<Type>, Proposition),
@@ -36,8 +35,6 @@ pub enum Predicate {
 
 #[derive(Clone, Copy, Debug)]
 pub enum Constant {
-    Succ,
-    Zero,
     True,
     False,
 }
@@ -55,8 +52,6 @@ pub enum Expression {
 }
 
 named!(typ_bool(&str) -> Type, map!(tag!("bool"), |_| Type::Bool));
-
-named!(typ_nat(&str) -> Type, map!(tag!("nat"), |_| Type::Nat));
 
 named!(typ_one(&str) -> Type, map!(char!('1'), |_| Type::One));
 
@@ -83,7 +78,7 @@ named!(typ_refinement(&str) -> Type, do_parse!(
     (Type::Refinement(id, Box::new(t), prop))
 ));
 
-named!(typ(&str) -> Type, alt!(typ_bool | typ_nat | typ_product | typ_function | typ_refinement | typ_one));
+named!(typ(&str) -> Type, alt!(typ_bool |  typ_product | typ_function | typ_refinement | typ_one));
 
 fn identifier(input: &str) -> IResult<&str, Identifier> {
     if let Some(c) = input.chars().nth(0) {
@@ -154,8 +149,6 @@ named!(predicate(&str) -> Predicate, alt!(
 ));
 
 named!(constant(&str) -> Constant, alt!(
-    map!(tag!("succ"), |_| Constant::Succ) |
-    map!(tag!("0"), |_| Constant::Zero) |
     map!(tag!("true"), |_| Constant::True) |
     map!(tag!("false"), |_| Constant::False)
 ));

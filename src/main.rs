@@ -2,12 +2,8 @@ extern crate im;
 extern crate lazy_static;
 extern crate llvm_sys;
 mod lambda_lift;
-mod logic;
-mod remove_pairs;
 mod semantic;
-mod specialize;
 mod syntax;
-mod uncurry;
 
 //use llvm_sys::core::{
 //LLVMContextCreate, LLVMContextDispose, LLVMDisposeModule, LLVMModuleCreateWithName,

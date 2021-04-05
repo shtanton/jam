@@ -1,4 +1,4 @@
 (
-	first
-	(((fn x:nat (fn y:nat <x y>)) (succ (0))) (0))
+	(fn x:bool (true))
+	(false)
 )
