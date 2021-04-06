@@ -1,1 +1,4 @@
-((fn x: x:nat{(forall y: nat (> x y))} <(succ x) x>) (0))
+(
+	(fn f:f:(fn x:bool bool){(prop (f (false)))} (f (true)))
+	(fn x:bool x)
+)

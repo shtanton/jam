@@ -227,13 +227,6 @@ pub struct Environment {
     context: Context,
 }
 
-fn constant_unrefined_return_type(constant: &Constant) -> UnrefinedType {
-    match constant {
-        Constant::True => UnrefinedType::Bool,
-        Constant::False => UnrefinedType::Bool,
-    }
-}
-
 fn add_applications_to_vec(
     expr: &Expression,
     mut context: Context,
@@ -341,6 +334,9 @@ impl Analyzer {
                     .into_iter()
                     .map(|arg| self.label_expression(arg, env.clone()))
                     .collect::<Result<Vec<_>, ()>>()?;
+                if !pred.accepts_args(&args) {
+                    return Err(());
+                }
                 Proposition::Call(*pred, args)
             }
             SProposition::Equal(typ, left, right) => Proposition::Equal(Box::new((
@@ -487,10 +483,13 @@ impl Analyzer {
                     .into_iter()
                     .map(|arg| self.label_expression(arg, env.clone()))
                     .collect::<Result<Vec<_>, ()>>()?;
+                if !constant.accepts_args(&args) {
+                    return Err(());
+                }
                 Expression {
                     env: ImHashMap::unions(args.iter().map(|arg| arg.env.clone())),
                     kind: ExpressionKind::Call(*constant, args),
-                    typ: constant_unrefined_return_type(&constant),
+                    typ: constant.return_type(),
                 }
             }
             SExpression::First(arg) => {
@@ -576,7 +575,6 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
             lift(judgement, &mut analyzer.ident_gen)
         })
         .collect::<Vec<_>>();
-    println!("{:#?}", judgements);
     let smt_programs = judgements
         .into_iter()
         .map(|judgement| {

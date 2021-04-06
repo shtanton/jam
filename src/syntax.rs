@@ -6,7 +6,7 @@ use nom::{
     error::{Error, ErrorKind},
     many0, map, named, preceded, separated_list0, tag, Err, IResult, Needed,
 };
-use crate::semantic::UnrefinedType;
+use crate::semantic::{UnrefinedType, Expression as SExpression};
 use std::fmt;
 
 #[derive(Debug)]
@@ -44,6 +44,14 @@ impl fmt::Display for Predicate {
     }
 }
 
+impl Predicate {
+    pub fn accepts_args(&self, args: &Vec<SExpression>) -> bool {
+        match self {
+            Predicate::Prop => args.len() == 1 && args[0].typ == UnrefinedType::Bool,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum Constant {
     True,
@@ -54,6 +62,12 @@ impl Constant {
     pub fn return_type(&self) -> UnrefinedType {
         match self {
             Constant::True | Constant::False => UnrefinedType::Bool,
+        }
+    }
+
+    pub fn accepts_args(&self, args: &Vec<SExpression>) -> bool {
+        match self {
+            Constant::False | Constant::True => args.len() == 0,
         }
     }
 }
