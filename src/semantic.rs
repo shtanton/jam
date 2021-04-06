@@ -2,8 +2,10 @@ use crate::lambda_lift::lift;
 use crate::syntax::{
     Constant, Expression as SExpression, Predicate, Proposition as SProposition, Type as SType,
 };
+use crate::smt::translate_judgement_to_smt;
 use im::{HashMap as ImHashMap, Vector as ImVec};
 use std::collections::HashMap;
+use std::fmt;
 
 pub type Identifier = u32;
 #[derive(Clone, Copy, Debug)]
@@ -131,6 +133,35 @@ pub enum UnrefinedType {
     Product(Box<(UnrefinedType, UnrefinedType)>),
     Function(Box<(UnrefinedType, UnrefinedType)>),
 }
+
+impl fmt::Display for UnrefinedType {
+    fn fmt(&self, fmt:&mut fmt::Formatter) -> fmt::Result {
+        match self {
+            UnrefinedType::One => write!(fmt, "1")?,
+            UnrefinedType::Bool => write!(fmt, "B")?,
+            UnrefinedType::Product(contents) => write!(fmt, "<{}x{}>", contents.0, contents.1)?,
+            UnrefinedType::Function(contents) => write!(fmt, "({}->{})", contents.0, contents.1)?,
+        }
+        Ok(())
+    }
+}
+
+impl PartialEq for UnrefinedType {
+    fn eq(&self, other: &UnrefinedType) -> bool {
+        match (self, other) {
+            (UnrefinedType::One, UnrefinedType::One) | (UnrefinedType::Bool, UnrefinedType::Bool) => true,
+            (UnrefinedType::Product(left_contents), UnrefinedType::Product(right_contents)) => {
+                left_contents.0 == right_contents.0 && left_contents.1 == right_contents.1
+            },
+            (UnrefinedType::Function(left_contents), UnrefinedType::Function(right_contents)) => {
+                left_contents.0 == right_contents.0 && left_contents.1 == right_contents.1
+            },
+            _ => false,
+        }
+    }
+}
+
+impl Eq for UnrefinedType {}
 
 #[derive(Clone)]
 pub struct Variable {
@@ -546,5 +577,16 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
         })
         .collect::<Vec<_>>();
     println!("{:#?}", judgements);
+    let smt_programs = judgements
+        .into_iter()
+        .map(|judgement| {
+            translate_judgement_to_smt(judgement, &mut analyzer.ident_gen)
+        })
+        .collect::<Result<Vec<_>, ()>>()
+        .map_err(|_| "error generating smt program".to_string())?;
+    for (i, smt) in smt_programs.iter().enumerate() {
+        println!("Program {}:", i);
+        println!("{}", smt);
+    }
     Ok(ast)
 }

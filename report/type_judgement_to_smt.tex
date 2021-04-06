@@ -112,14 +112,9 @@
     \texttt{(forall ((x T)) (=> P Q))}$
     where $\triple{x}{T}{P} = Simplify(\phi)$ and $\texttt{Q} = Proposition(tx =_\psi t'x)$
 
-    $Proposition(t =_{(x: \phi)P} t') \coloneqq$
-
-    $\begin{cases}
-        \texttt{(and (and P[t/x] P'[t'/x]) Q)} & \text{if } SimpleTypeOf(t)=SimpleTypeOf(t')=T\\
-        \texttt{false} & \text{otherwise}
-    \end{cases}$
-    where $\triple{\_}{T}{\_} = Simplify(\phi)$,
-    $\texttt{P} = Proposition(P)$,
+    $Proposition(t =_{(x: \phi)P} t') \coloneqq
+    \texttt{(and (and P[t/x] P[t'/x]) Q)}$
+    where $\texttt{P} = Proposition(P)$ and
     $\texttt{Q} = Proposition(t =_\phi t')$
 
     $Proposition(\phi \sqsubseteq \psi) \coloneqq$

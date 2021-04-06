@@ -1,4 +1,7 @@
 (
-	(fn swap:(fn x:<y:nat nat> <y:nat nat>) (first (swap <(0) (succ (0))>)))
-	(fn x:<y:nat nat> <(second x) (first x)>)
+	(fn x:x:bool{(prop x)} (false))
+	(
+		(fn x:bool (true))
+		(false)
+	)
 )

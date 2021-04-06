@@ -6,6 +6,8 @@ use nom::{
     error::{Error, ErrorKind},
     many0, map, named, preceded, separated_list0, tag, Err, IResult, Needed,
 };
+use crate::semantic::UnrefinedType;
+use std::fmt;
 
 #[derive(Debug)]
 pub enum Type {
@@ -30,13 +32,40 @@ pub enum Proposition {
 
 #[derive(Clone, Copy, Debug)]
 pub enum Predicate {
-    GreaterThan,
+    Prop,
+}
+
+impl fmt::Display for Predicate {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Predicate::Prop => write!(fmt, "prop")?,
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum Constant {
     True,
     False,
+}
+
+impl Constant {
+    pub fn return_type(&self) -> UnrefinedType {
+        match self {
+            Constant::True | Constant::False => UnrefinedType::Bool,
+        }
+    }
+}
+
+impl fmt::Display for Constant {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Constant::True => write!(fmt, "true")?,
+            Constant::False => write!(fmt, "false")?,
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -145,7 +174,7 @@ named!(proposition(&str) -> Proposition, alt!(
 ));
 
 named!(predicate(&str) -> Predicate, alt!(
-    map!(tag!(">"), |_| Predicate::GreaterThan)
+    map!(tag!("prop"), |_| Predicate::Prop)
 ));
 
 named!(constant(&str) -> Constant, alt!(
