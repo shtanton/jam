@@ -1,7 +1,70 @@
-use crate::semantic::{Identifier, UnrefinedType, IdentifierGenerator};
+use crate::lambda_lift::{Expression as LExpression, Judgement, Proposition as LProposition, Type};
+use crate::semantic::{Identifier, IdentifierGenerator, UnrefinedType};
 use crate::syntax::{Constant, Predicate};
-use crate::lambda_lift::{Judgement, Type, Expression as LExpression, Proposition as LProposition};
+use std::collections::HashMap;
 use std::fmt;
+
+#[derive(Clone, Eq, Hash, PartialEq)]
+enum Sort {
+    Pair(Box<(Sort, Sort)>),
+    Id(TypeIdentifier),
+    One,
+    Bool,
+}
+
+impl fmt::Display for Sort {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Sort::One => write!(fmt, "1")?,
+            Sort::Bool => write!(fmt, "B")?,
+            Sort::Id(id) => write!(fmt, "T!{}", id)?,
+            Sort::Pair(contents) => write!(fmt, "<{}x{}>", contents.0, contents.1)?,
+        }
+        Ok(())
+    }
+}
+
+struct TypeMap {
+    sorts: HashMap<UnrefinedType, Sort>,
+    types: HashMap<Sort, UnrefinedType>,
+    next_id: TypeIdentifier,
+}
+
+impl Default for TypeMap {
+    fn default() -> TypeMap {
+        TypeMap {
+            sorts: HashMap::new(),
+            types: HashMap::new(),
+            next_id: 0,
+        }
+    }
+}
+
+impl TypeMap {
+    fn get_sort(&mut self, typ: &UnrefinedType) -> Sort {
+        if let Some(sort) = self.sorts.get(typ) {
+            sort.clone()
+        } else {
+            match typ {
+                UnrefinedType::One => Sort::One,
+                UnrefinedType::Bool => Sort::Bool,
+                UnrefinedType::Product(contents) => Sort::Pair(Box::new((
+                    self.get_sort(&contents.0),
+                    self.get_sort(&contents.1),
+                ))),
+                UnrefinedType::Function(contents) => {
+                    let sort = Sort::Id(self.next_id);
+                    self.next_id += 1;
+                    self.sorts.insert(typ.clone(), sort.clone());
+                    self.types.insert(sort.clone(), typ.clone());
+                    sort
+                }
+            }
+        }
+    }
+}
+
+pub type TypeIdentifier = u32;
 
 pub struct Smt {
     declarations: Vec<Declaration>,
@@ -22,7 +85,7 @@ impl fmt::Display for Smt {
 
 pub struct Declaration {
     id: Identifier,
-    typ: UnrefinedType,
+    typ: Sort,
 }
 
 #[derive(Clone)]
@@ -32,7 +95,7 @@ pub enum Expression {
     Ast,
     Variable(Identifier),
     Call(Function, Vec<Expression>),
-    Forall(Identifier, UnrefinedType, Box<Expression>),
+    Forall(Identifier, Sort, Box<Expression>),
 }
 
 impl Expression {
@@ -42,16 +105,16 @@ impl Expression {
                 if *id == target {
                     *self = expr.clone();
                 }
-            },
-            Expression::False | Expression::True | Expression::Ast => {},
+            }
+            Expression::False | Expression::True | Expression::Ast => {}
             Expression::Call(_, args) => {
                 for arg in args.iter_mut() {
                     arg.substitute(expr, target);
                 }
-            },
+            }
             Expression::Forall(_, _, body) => {
                 body.substitute(expr, target);
-            },
+            }
         }
     }
 }
@@ -69,10 +132,10 @@ impl fmt::Display for Expression {
                     write!(fmt, " {}", arg)?;
                 }
                 write!(fmt, ")")?;
-            },
+            }
             Expression::Forall(id, typ, body) => {
                 write!(fmt, "(forall ((x!{} {})) {})", id, typ, body)?;
-            },
+            }
         }
         Ok(())
     }
@@ -89,7 +152,7 @@ pub enum Function {
     And,
     Predicate(Predicate),
     Constant(Constant),
-    Apply(UnrefinedType),
+    Apply(Sort),
 }
 
 impl fmt::Display for Function {
@@ -112,6 +175,7 @@ impl fmt::Display for Function {
 
 struct ToSmt<'a> {
     ident_gen: &'a mut IdentifierGenerator,
+    type_map: TypeMap,
 }
 
 impl<'a> ToSmt<'a> {
@@ -127,59 +191,57 @@ impl<'a> ToSmt<'a> {
                 let tuple_id = self.next_id();
                 let (first_id, first_type, mut first_prop) = self.simplify(contents.0)?;
                 let (second_id, second_type, mut second_prop) = self.simplify(contents.1)?;
-                let first_call = Expression::Call(
-                    Function::First,
-                    vec![Expression::Variable(tuple_id)],
-                );
+                let first_call =
+                    Expression::Call(Function::First, vec![Expression::Variable(tuple_id)]);
                 first_prop.substitute(&first_call, first_id);
                 second_prop.substitute(&first_call, id);
-                second_prop.substitute(&Expression::Call(
-                    Function::Second,
-                    vec![Expression::Variable(tuple_id)],
-                ), second_id);
+                second_prop.substitute(
+                    &Expression::Call(Function::Second, vec![Expression::Variable(tuple_id)]),
+                    second_id,
+                );
                 (
                     tuple_id,
                     UnrefinedType::Product(Box::new((first_type, second_type))),
-                    Expression::Call(
-                        Function::And,
-                        vec![
-                            first_prop,
-                            second_prop,
-                        ],
-                    ),
+                    Expression::Call(Function::And, vec![first_prop, second_prop]),
                 )
-            },
+            }
             Type::Function(id, contents) => {
                 let function_id = self.next_id();
                 let (param_id, param_type, mut param_prop) = self.simplify(contents.0)?;
                 let (body_id, body_type, mut body_prop) = self.simplify(contents.1)?;
                 let typ = UnrefinedType::Function(Box::new((param_type.clone(), body_type)));
+                let type_id = self.type_map.get_sort(&typ);
                 param_prop.substitute(&Expression::Variable(id), param_id);
-                body_prop.substitute(&Expression::Call(
-                    Function::Apply(typ.clone()),
-                    vec![Expression::Variable(function_id), Expression::Variable(id)],
-                ), body_id);
+                body_prop.substitute(
+                    &Expression::Call(
+                        Function::Apply(type_id),
+                        vec![Expression::Variable(function_id), Expression::Variable(id)],
+                    ),
+                    body_id,
+                );
                 (
                     function_id,
                     typ,
-                    Expression::Forall(id, param_type, Box::new(Expression::Call(
-                        Function::Implies,
-                        vec![
-                            param_prop,
-                            body_prop,
-                        ],
-                    ))),
+                    Expression::Forall(
+                        id,
+                        self.type_map.get_sort(&param_type),
+                        Box::new(Expression::Call(
+                            Function::Implies,
+                            vec![param_prop, body_prop],
+                        )),
+                    ),
                 )
-            },
+            }
             Type::Refinement(id, supertype, prop) => {
                 let prop = self.translate_proposition(prop)?;
                 let (super_id, typ, mut superprop) = self.simplify(*supertype)?;
                 superprop.substitute(&Expression::Variable(id), super_id);
-                (id, typ, Expression::Call(
-                    Function::And,
-                    vec![prop, superprop],
-                ))
-            },
+                (
+                    id,
+                    typ,
+                    Expression::Call(Function::And, vec![prop, superprop]),
+                )
+            }
         })
     }
 
@@ -189,24 +251,30 @@ impl<'a> ToSmt<'a> {
             LExpression::Variable(id, _) => Expression::Variable(id),
             LExpression::Call(constant, args) => Expression::Call(
                 Function::Constant(constant),
-                args.into_iter().map(|arg| self.translate_expression(arg)).collect::<Result<_, ()>>()?,
+                args.into_iter()
+                    .map(|arg| self.translate_expression(arg))
+                    .collect::<Result<_, ()>>()?,
             ),
             LExpression::Tuple(contents) => Expression::Call(
                 Function::Pair,
-                vec![self.translate_expression(contents.0)?, self.translate_expression(contents.1)?],
+                vec![
+                    self.translate_expression(contents.0)?,
+                    self.translate_expression(contents.1)?,
+                ],
             ),
-            LExpression::First(arg) => Expression::Call(
-                Function::First,
-                vec![self.translate_expression(*arg)?],
-            ),
-            LExpression::Second(arg) => Expression::Call(
-                Function::Second,
-                vec![self.translate_expression(*arg)?],
-            ),
+            LExpression::First(arg) => {
+                Expression::Call(Function::First, vec![self.translate_expression(*arg)?])
+            }
+            LExpression::Second(arg) => {
+                Expression::Call(Function::Second, vec![self.translate_expression(*arg)?])
+            }
             LExpression::Application(contents) => Expression::Call(
-                Function::Apply(contents.0.unrefined_type()?),
-                vec![self.translate_expression(contents.0)?, self.translate_expression(contents.1)?],
-            )
+                Function::Apply(self.type_map.get_sort(&contents.0.unrefined_type()?)),
+                vec![
+                    self.translate_expression(contents.0)?,
+                    self.translate_expression(contents.1)?,
+                ],
+            ),
         })
     }
 
@@ -215,23 +283,28 @@ impl<'a> ToSmt<'a> {
             LProposition::False => Expression::False,
             LProposition::Implies(contents) => Expression::Call(
                 Function::Implies,
-                vec![self.translate_proposition(contents.0)?, self.translate_proposition(contents.1)?],
+                vec![
+                    self.translate_proposition(contents.0)?,
+                    self.translate_proposition(contents.1)?,
+                ],
             ),
             LProposition::Forall(id, contents) => {
                 let (typ_id, typ, mut prop) = self.simplify(contents.0)?;
                 prop.substitute(&Expression::Variable(id), typ_id);
                 Expression::Forall(
                     id,
-                    typ,
+                    self.type_map.get_sort(&typ),
                     Box::new(Expression::Call(
                         Function::Implies,
                         vec![prop, self.translate_proposition(contents.1)?],
                     )),
                 )
-            },
+            }
             LProposition::Call(pred, args) => Expression::Call(
                 Function::Predicate(pred),
-                args.into_iter().map(|arg| self.translate_expression(arg)).collect::<Result<_, ()>>()?,
+                args.into_iter()
+                    .map(|arg| self.translate_expression(arg))
+                    .collect::<Result<_, ()>>()?,
             ),
             LProposition::Equal(contents) => {
                 let left = contents.1;
@@ -249,13 +322,16 @@ impl<'a> ToSmt<'a> {
                         } else {
                             Expression::False
                         }
-                    },
+                    }
                     Type::Bool => {
                         if let UnrefinedType::Bool = left_type {
                             if let UnrefinedType::Bool = right_type {
                                 Expression::Call(
                                     Function::Equal,
-                                    vec![self.translate_expression(left)?, self.translate_expression(right)?],
+                                    vec![
+                                        self.translate_expression(left)?,
+                                        self.translate_expression(right)?,
+                                    ],
                                 )
                             } else {
                                 Expression::False
@@ -263,7 +339,7 @@ impl<'a> ToSmt<'a> {
                         } else {
                             Expression::False
                         }
-                    },
+                    }
                     Type::Product(id, mut contents) => {
                         let prop1 = self.translate_proposition(LProposition::Equal(Box::new((
                             contents.0,
@@ -276,28 +352,28 @@ impl<'a> ToSmt<'a> {
                             LExpression::Second(Box::new(left)),
                             LExpression::Second(Box::new(right)),
                         ))))?;
-                        Expression::Call(
-                            Function::And,
-                            vec![prop1, prop2],
-                        )
-                    },
+                        Expression::Call(Function::And, vec![prop1, prop2])
+                    }
                     Type::Function(id, contents) => {
                         let (type_id, typ, mut prop1) = self.simplify(contents.0)?;
                         prop1.substitute(&Expression::Variable(id), type_id);
                         let prop2 = self.translate_proposition(LProposition::Equal(Box::new((
                             contents.1,
-                            LExpression::Application(Box::new((left, LExpression::Variable(id, typ.clone())))),
-                            LExpression::Application(Box::new((right, LExpression::Variable(id, typ.clone())))),
+                            LExpression::Application(Box::new((
+                                left,
+                                LExpression::Variable(id, typ.clone()),
+                            ))),
+                            LExpression::Application(Box::new((
+                                right,
+                                LExpression::Variable(id, typ.clone()),
+                            ))),
                         ))))?;
                         Expression::Forall(
                             id,
-                            typ,
-                            Box::new(Expression::Call(
-                                Function::Implies,
-                                vec![prop1, prop2],
-                            )),
+                            self.type_map.get_sort(&typ),
+                            Box::new(Expression::Call(Function::Implies, vec![prop1, prop2])),
                         )
-                    },
+                    }
                     Type::Refinement(id, supertype, prop) => {
                         let mut prop1 = self.translate_proposition(prop)?;
                         let mut prop2 = prop1.clone();
@@ -308,20 +384,15 @@ impl<'a> ToSmt<'a> {
                         Expression::Call(
                             Function::And,
                             vec![
-                                Expression::Call(
-                                    Function::And,
-                                    vec![prop1, prop2],
-                                ),
+                                Expression::Call(Function::And, vec![prop1, prop2]),
                                 self.translate_proposition(LProposition::Equal(Box::new((
-                                    *supertype,
-                                    left,
-                                    right,
+                                    *supertype, left, right,
                                 ))))?,
                             ],
                         )
-                    },
+                    }
                 }
-            },
+            }
             LProposition::Supertype(contents) => {
                 let (super_id, supertype, super_prop) = self.simplify(contents.0)?;
                 let (sub_id, subtype, mut sub_prop) = self.simplify(contents.1)?;
@@ -331,24 +402,31 @@ impl<'a> ToSmt<'a> {
                 sub_prop.substitute(&Expression::Variable(super_id), sub_id);
                 Expression::Forall(
                     super_id,
-                    supertype,
+                    self.type_map.get_sort(&supertype),
                     Box::new(Expression::Call(
                         Function::Implies,
                         vec![sub_prop, super_prop],
                     )),
                 )
-            },
+            }
         })
     }
 
     fn translate_judgement_to_smt(&mut self, judgement: Judgement) -> Result<Smt, ()> {
-        let Judgement {context, expression, typ} = judgement;
+        let Judgement {
+            context,
+            expression,
+            typ,
+        } = judgement;
         let mut declarations = Vec::new();
         let mut assertions = Vec::new();
         for defn in context.into_iter() {
             let (id, typ, mut prop) = self.simplify(defn.1)?;
             prop.substitute(&Expression::Variable(defn.0), id);
-            declarations.push(Declaration {id: defn.0, typ});
+            declarations.push(Declaration {
+                id: defn.0,
+                typ: self.type_map.get_sort(&typ),
+            });
             assertions.push(prop);
         }
         let (id, _, mut prop) = self.simplify(typ)?;
@@ -361,7 +439,13 @@ impl<'a> ToSmt<'a> {
     }
 }
 
-pub fn translate_judgement_to_smt(judgement: Judgement, ident_gen: &mut IdentifierGenerator) -> Result<Smt, ()> {
-    let mut translater = ToSmt {ident_gen};
+pub fn translate_judgement_to_smt(
+    judgement: Judgement,
+    ident_gen: &mut IdentifierGenerator,
+) -> Result<Smt, ()> {
+    let mut translater = ToSmt {
+        ident_gen,
+        type_map: TypeMap::default(),
+    };
     translater.translate_judgement_to_smt(judgement)
 }

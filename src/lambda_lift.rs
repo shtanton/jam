@@ -1,7 +1,6 @@
 use crate::semantic::{
-    Expression as SExpression, ExpressionKind as SExpressionKind,
-    Proposition as SProposition, Identifier, Type as SType, UnrefinedType,
-    IdentifierGenerator, Judgement as SJudgement,
+    Expression as SExpression, ExpressionKind as SExpressionKind, Identifier, IdentifierGenerator,
+    Judgement as SJudgement, Proposition as SProposition, Type as SType, UnrefinedType,
 };
 use crate::syntax::{Constant, Predicate};
 
@@ -26,27 +25,31 @@ impl Type {
         match self {
             Type::One => UnrefinedType::One,
             Type::Bool => UnrefinedType::Bool,
-            Type::Product(_, contents) => UnrefinedType::Product(Box::new((contents.0.unrefine(), contents.1.unrefine()))),
-            Type::Function(_, contents) => UnrefinedType::Function(Box::new((contents.0.unrefine(), contents.1.unrefine()))),
+            Type::Product(_, contents) => {
+                UnrefinedType::Product(Box::new((contents.0.unrefine(), contents.1.unrefine())))
+            }
+            Type::Function(_, contents) => {
+                UnrefinedType::Function(Box::new((contents.0.unrefine(), contents.1.unrefine())))
+            }
             Type::Refinement(_, typ, _) => typ.unrefine(),
         }
     }
 
     pub fn substitute(&mut self, expr: &Expression, target: Identifier) {
         match self {
-            Type::One | Type::Bool => {},
+            Type::One | Type::Bool => {}
             Type::Product(_, contents) => {
                 contents.0.substitute(expr, target);
                 contents.1.substitute(expr, target);
-            },
+            }
             Type::Function(_, contents) => {
                 contents.0.substitute(expr, target);
                 contents.1.substitute(expr, target);
-            },
+            }
             Type::Refinement(_, supertype, prop) => {
                 supertype.substitute(expr, target);
                 prop.substitute(expr, target);
-            },
+            }
         }
     }
 }
@@ -78,51 +81,51 @@ impl Expression {
                 } else {
                     return Err(());
                 }
-            },
+            }
             Expression::First(arg) => {
                 if let UnrefinedType::Product(pcontents) = arg.unrefined_type()? {
                     pcontents.0
                 } else {
                     return Err(());
                 }
-            },
+            }
             Expression::Second(arg) => {
                 if let UnrefinedType::Product(pcontents) = arg.unrefined_type()? {
                     pcontents.1
                 } else {
                     return Err(());
                 }
-            },
+            }
         })
     }
 
     pub fn substitute(&mut self, expr: &Expression, target: Identifier) {
         match self {
-            Expression::Ast => {},
+            Expression::Ast => {}
             Expression::Variable(id, _) => {
                 if *id == target {
                     *self = expr.clone();
                 }
-            },
+            }
             Expression::Application(contents) => {
                 contents.0.substitute(expr, target);
                 contents.1.substitute(expr, target);
-            },
+            }
             Expression::Call(_, args) => {
                 for arg in args.iter_mut() {
                     arg.substitute(expr, target);
                 }
-            },
+            }
             Expression::First(arg) => {
                 arg.substitute(expr, target);
-            },
+            }
             Expression::Second(arg) => {
                 arg.substitute(expr, target);
-            },
+            }
             Expression::Tuple(contents) => {
                 contents.0.substitute(expr, target);
                 contents.1.substitute(expr, target);
-            },
+            }
         }
     }
 }
@@ -140,33 +143,32 @@ pub enum Proposition {
 impl Proposition {
     pub fn substitute(&mut self, expr: &Expression, target: Identifier) {
         match self {
-            Proposition::False => {},
+            Proposition::False => {}
             Proposition::Implies(contents) => {
                 contents.0.substitute(expr, target);
                 contents.1.substitute(expr, target);
-            },
+            }
             Proposition::Forall(_, contents) => {
                 contents.0.substitute(expr, target);
                 contents.1.substitute(expr, target);
-            },
+            }
             Proposition::Call(_, args) => {
                 for arg in args.iter_mut() {
                     arg.substitute(expr, target);
                 }
-            },
+            }
             Proposition::Equal(contents) => {
                 contents.0.substitute(expr, target);
                 contents.1.substitute(expr, target);
                 contents.2.substitute(expr, target);
-            },
+            }
             Proposition::Supertype(contents) => {
                 contents.0.substitute(expr, target);
                 contents.1.substitute(expr, target);
-            },
+            }
         }
     }
 }
-
 
 struct LambdaLifter<'a> {
     ident_gen: &'a mut IdentifierGenerator,
@@ -199,22 +201,25 @@ impl<'a> LambdaLifter<'a> {
                 let new_fn = self.next_id();
                 let refinement_id = self.next_id();
                 let refined_body_type = self.refine_type(&body.typ);
-                let typ = Type::Function(param, Box::new((
-                    self.lift_type(param_type),
-                    Type::Refinement(
-                        refinement_id,
-                        Box::new(refined_body_type.clone()),
-                        Proposition::Equal(Box::new((
-                            refined_body_type,
-                            Expression::Variable(refinement_id, body.typ.clone()),
-                            self.lift_expression(*body),
-                        ))),
-                    ),
-                )));
+                let typ = Type::Function(
+                    param,
+                    Box::new((
+                        self.lift_type(param_type),
+                        Type::Refinement(
+                            refinement_id,
+                            Box::new(refined_body_type.clone()),
+                            Proposition::Equal(Box::new((
+                                refined_body_type,
+                                Expression::Variable(refinement_id, body.typ.clone()),
+                                self.lift_expression(*body),
+                            ))),
+                        ),
+                    )),
+                );
                 let unrefined_type = typ.unrefine();
                 self.context.push((new_fn, typ));
                 Expression::Variable(new_fn, unrefined_type)
-            },
+            }
             SExpressionKind::Application(contents) => Expression::Application(Box::new((
                 self.lift_expression(contents.0),
                 self.lift_expression(contents.1),
@@ -222,10 +227,14 @@ impl<'a> LambdaLifter<'a> {
             SExpressionKind::Ast => Expression::Ast,
             SExpressionKind::Call(constant, args) => Expression::Call(
                 constant,
-                args.into_iter().map(|arg| self.lift_expression(arg)).collect(),
+                args.into_iter()
+                    .map(|arg| self.lift_expression(arg))
+                    .collect(),
             ),
             SExpressionKind::First(arg) => Expression::First(Box::new(self.lift_expression(*arg))),
-            SExpressionKind::Second(arg) => Expression::Second(Box::new(self.lift_expression(*arg))),
+            SExpressionKind::Second(arg) => {
+                Expression::Second(Box::new(self.lift_expression(*arg)))
+            }
             SExpressionKind::Tuple(contents) => Expression::Tuple(Box::new((
                 self.lift_expression(contents.0),
                 self.lift_expression(contents.1),
@@ -243,7 +252,9 @@ impl<'a> LambdaLifter<'a> {
             ))),
             SProposition::Call(pred, args) => Proposition::Call(
                 pred,
-                args.into_iter().map(|arg| self.lift_expression(arg)).collect(),
+                args.into_iter()
+                    .map(|arg| self.lift_expression(arg))
+                    .collect(),
             ),
             SProposition::Forall(id, contents) => Proposition::Forall(
                 id,
@@ -272,17 +283,17 @@ impl<'a> LambdaLifter<'a> {
                 let first = self.lift_type(contents.0);
                 let second = self.lift_type(contents.1);
                 Type::Product(id, Box::new((first, second)))
-            },
+            }
             SType::Function(id, contents) => {
                 let param = self.lift_type(contents.0);
                 let body = self.lift_type(contents.1);
                 Type::Function(id, Box::new((param, body)))
-            },
+            }
             SType::Refinement(id, supertype, prop) => {
                 let supertype = self.lift_type(*supertype);
                 let prop = self.lift_proposition(prop);
                 Type::Refinement(id, Box::new(supertype), prop)
-            },
+            }
         }
     }
 

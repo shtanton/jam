@@ -3,8 +3,8 @@ extern crate lazy_static;
 extern crate llvm_sys;
 mod lambda_lift;
 mod semantic;
-mod syntax;
 mod smt;
+mod syntax;
 
 //use llvm_sys::core::{
 //LLVMContextCreate, LLVMContextDispose, LLVMDisposeModule, LLVMModuleCreateWithName,

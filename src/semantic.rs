@@ -1,8 +1,8 @@
 use crate::lambda_lift::lift;
+use crate::smt::translate_judgement_to_smt;
 use crate::syntax::{
     Constant, Expression as SExpression, Predicate, Proposition as SProposition, Type as SType,
 };
-use crate::smt::translate_judgement_to_smt;
 use im::{HashMap as ImHashMap, Vector as ImVec};
 use std::collections::HashMap;
 use std::fmt;
@@ -126,7 +126,7 @@ impl Expression {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum UnrefinedType {
     One,
     Bool,
@@ -135,7 +135,7 @@ pub enum UnrefinedType {
 }
 
 impl fmt::Display for UnrefinedType {
-    fn fmt(&self, fmt:&mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
             UnrefinedType::One => write!(fmt, "1")?,
             UnrefinedType::Bool => write!(fmt, "B")?,
@@ -149,13 +149,14 @@ impl fmt::Display for UnrefinedType {
 impl PartialEq for UnrefinedType {
     fn eq(&self, other: &UnrefinedType) -> bool {
         match (self, other) {
-            (UnrefinedType::One, UnrefinedType::One) | (UnrefinedType::Bool, UnrefinedType::Bool) => true,
+            (UnrefinedType::One, UnrefinedType::One)
+            | (UnrefinedType::Bool, UnrefinedType::Bool) => true,
             (UnrefinedType::Product(left_contents), UnrefinedType::Product(right_contents)) => {
                 left_contents.0 == right_contents.0 && left_contents.1 == right_contents.1
-            },
+            }
             (UnrefinedType::Function(left_contents), UnrefinedType::Function(right_contents)) => {
                 left_contents.0 == right_contents.0 && left_contents.1 == right_contents.1
-            },
+            }
             _ => false,
         }
     }
@@ -552,16 +553,14 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
     let applications = find_applications(&ast);
     let mut judgements = applications
         .into_iter()
-        .map(
-            |(context, fun, arg)| {
-                let typ = arg_type(&fun, context.clone(), ImVec::default())?;
-                Ok(Judgement {
-                    context: context.into_iter().collect(),
-                    expression: arg,
-                    typ,
-                })
-            },
-        )
+        .map(|(context, fun, arg)| {
+            let typ = arg_type(&fun, context.clone(), ImVec::default())?;
+            Ok(Judgement {
+                context: context.into_iter().collect(),
+                expression: arg,
+                typ,
+            })
+        })
         .collect::<Result<Vec<_>, ()>>()
         .map_err(|_| "error generating typing judgements".to_string())?;
     judgements.push(Judgement {
@@ -571,15 +570,11 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
     });
     let judgements = judgements
         .into_iter()
-        .map(|judgement| {
-            lift(judgement, &mut analyzer.ident_gen)
-        })
+        .map(|judgement| lift(judgement, &mut analyzer.ident_gen))
         .collect::<Vec<_>>();
     let smt_programs = judgements
         .into_iter()
-        .map(|judgement| {
-            translate_judgement_to_smt(judgement, &mut analyzer.ident_gen)
-        })
+        .map(|judgement| translate_judgement_to_smt(judgement, &mut analyzer.ident_gen))
         .collect::<Result<Vec<_>, ()>>()
         .map_err(|_| "error generating smt program".to_string())?;
     for (i, smt) in smt_programs.iter().enumerate() {

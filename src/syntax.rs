@@ -1,4 +1,5 @@
 extern crate nom;
+use crate::semantic::{Expression as SExpression, UnrefinedType};
 use nom::{
     alt, char,
     character::complete::{alphanumeric0, multispace0 as ws0, multispace1 as ws1},
@@ -6,7 +7,6 @@ use nom::{
     error::{Error, ErrorKind},
     many0, map, named, preceded, separated_list0, tag, Err, IResult, Needed,
 };
-use crate::semantic::{UnrefinedType, Expression as SExpression};
 use std::fmt;
 
 #[derive(Debug)]
