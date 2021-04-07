@@ -198,10 +198,11 @@ impl<'a> LambdaLifter<'a> {
     fn lift_expression(&mut self, expr: SExpression) -> Expression {
         match expr.kind {
             SExpressionKind::Abstraction(param, param_type, body) => {
+                let environment: Vec<_> = expr.env.into_iter().collect();
                 let new_fn = self.next_id();
                 let refinement_id = self.next_id();
                 let refined_body_type = self.refine_type(&body.typ);
-                let typ = Type::Function(
+                let mut typ = Type::Function(
                     param,
                     Box::new((
                         self.lift_type(param_type),
@@ -216,9 +217,18 @@ impl<'a> LambdaLifter<'a> {
                         ),
                     )),
                 );
-                let unrefined_type = typ.unrefine();
+                for (param_id, param_type) in environment.iter().rev() {
+                    typ = Type::Function(*param_id, Box::new((self.refine_type(param_type), typ)));
+                }
+                let mut expr = Expression::Variable(new_fn, typ.unrefine());
+                for (param_id, param_type) in environment.into_iter() {
+                    expr = Expression::Application(Box::new((
+                        expr,
+                        Expression::Variable(param_id, param_type),
+                    )));
+                }
                 self.context.push((new_fn, typ));
-                Expression::Variable(new_fn, unrefined_type)
+                expr
             }
             SExpressionKind::Application(contents) => Expression::Application(Box::new((
                 self.lift_expression(contents.0),

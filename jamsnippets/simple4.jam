@@ -1,0 +1,8 @@
+(
+	(
+		fn 
+		swap: (fn x:bool (fn y:bool z:<a:bool bool>{(=> (prop x) (prop (second z)))}))
+		(second ((swap (true)) (false)))
+	)
+	(fn x:bool (fn y:bool <y x>))
+)

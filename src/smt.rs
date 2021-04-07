@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 #[derive(Clone, Eq, Hash, PartialEq)]
-enum Sort {
+pub enum Sort {
     Pair(Box<(Sort, Sort)>),
     Id(TypeIdentifier),
     One,
@@ -52,7 +52,7 @@ impl TypeMap {
                     self.get_sort(&contents.0),
                     self.get_sort(&contents.1),
                 ))),
-                UnrefinedType::Function(contents) => {
+                UnrefinedType::Function(_) => {
                     let sort = Sort::Id(self.next_id);
                     self.next_id += 1;
                     self.sorts.insert(typ.clone(), sort.clone());

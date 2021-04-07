@@ -20,19 +20,19 @@
     This can be done entirely before the translation to SMT happens using a relation $\Rightarrow_{LL}$ which I define.
 
     $\Gamma, x: \phi[\lambda y: \phi' . u], \Gamma' \vdash t: \psi \Rightarrow_{LL}
-    \Gamma, f: \Pi_{y: \phi'} (z: \tau) z =_\tau u, x: \phi[f], \Gamma' \vdash t: \psi$
+    \Gamma, f: \Pi_{x_1: \tau_1} ... \Pi_{x_n: \tau_n} \Pi_{y: \phi'} (z: \tau) z =_\tau u, x: \phi[f\ x_1\ ...\ x_n], \Gamma' \vdash t: \psi$
 
-    Where $\tau = SimpleTypeOf(u)$.
+    Where $\tau = SimpleTypeOf(u)$ and $\{x_i: \tau_i\} = FV(\lambda y: \phi' . u)$.
 
     $\Gamma \vdash t[\lambda x: \phi . u]: \psi \Rightarrow_{LL}
-    \Gamma, f: \Pi_{x: \phi} (y: \tau) y =_\tau u \vdash t[f]: \psi$
+    \Gamma, f: \Pi_{x_1: \tau_1} ... \Pi_{x_n: \tau_n} \Pi_{x: \phi} (y: \tau) y =_\tau u \vdash t[f\ x_1\ ...\ x_n]: \psi$
 
-    Where $\tau = SimpleTypeOf(u)$.
+    Where $\tau = SimpleTypeOf(u)$ and $\{x_i: \tau_i\} = FV(\lambda x: \phi . u)$.
 
     $\Gamma \vdash t: \psi[\lambda x: \phi . u] \Rightarrow_{LL}
-    \Gamma, f: \Pi_{x: \phi} (y: \tau) y =_\tau u \vdash t: \psi[f]$
+    \Gamma, f: \Pi_{x_1: \tau_1} ... \Pi_{x_n: \tau_n} \Pi_{x: \phi} (y: \tau) y =_\tau u \vdash t: \psi[f\ x_1\ ...\ x_n]$
 
-    Where $\tau = SimpleTypeOf(u)$.
+    Where $\tau = SimpleTypeOf(u)$ and $\{x_i: \tau_i\} = FV(\lambda x: \phi . u)$.
 
     Next I define $Logic$ recursively.
     I'm using the SMT-LIB2 front-end syntax for my SMT program, but the implementation will be working with
