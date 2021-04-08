@@ -7,6 +7,16 @@
 \usepackage[margin=1in]{geometry}
 
 \newcommand{\pipe}{\ |\ }
+\newcommand{\typerule}[2]{
+    $\dfrac{
+        #1
+    }{
+        #2
+    }$
+}
+\newcommand{\judgement}[1]{
+    \Gamma \vdash #1
+}
 
 \title{Defining the Language}
 \author{Charlie Stanton}
@@ -15,50 +25,104 @@
     \maketitle
 
     \section{Inspiration}
-    The language is based on the calculus defined and explored in this paper:
+    The language is based on the calculus defined by Denney \cite{denney98}
+    which in turn is based on the simply typed lambda calculus with product types, $\lambda^{\times \rightarrow}$.
+    I will only describe additional features that I have added to Denney's calculus.
 
-    \url{https://www.researchgate.net/profile/Ewen-Denney/publication/2406398_Refining_Refinement_Types/links/56d3210e08ae059e376122e4/Refining-Refinement-Types.pdf}
-
-    Which in turn is based on the simply typed lambda calculus with product types, $\lambda^{\times \rightarrow}$.
-
-    \section{Syntax}
-    The language has 3 fundamental constructs
-
+    Denney defines a signature to be
     \begin{itemize}
-        \item Expressions which evaluate to values at runtime
-        \item Types which restrict the possible values that an expression can have
-        \item Propositions which can be used in types for much finer control over the type restrictions than most languages offer
+        \item A finite set of ground types, $\gamma$.
+        \item A finite set of n-ary constants, $k$, with sorts $\tau_1, ..., \tau_n \rightarrow \tau$. I also include a definition for the operational semantics of the function with each of mine.
+        \item A finite set of n-ary predicates, $F$, each with a sequence of types $\tau_1, ..., \tau_n$. I include a definition for predicates too.
+        \item A potentially infinite set of axioms.
     \end{itemize}
 
-    These are defined using the following grammar
+    I have 2 ground types, $bool$ and $u8$ which are booleans and 8 bit unsigned integers respectively.
+    I chose $u8$ instead of $nat$ which Denney used as it guaruntees that the program passed to the SMT solver
+    will be decidable, since any variable will have finitely many possible values.
+    I have constants defined in Table \ref{tab:constants}
+    and predicates defined in Table \ref{tab:predicates}.
 
-    \renewcommand{\arraystretch}{2}
-    \begin{tabular}{l>{$}c<{$}>{$}c<{$}}
-        Expressions & t \coloneqq&
-        x \pipe (k\ t_1\ ...\ t_n) \pipe \ast \pipe <t_1\ t_2> \pipe (fn\ x:\phi\ t) \pipe (\pi_i\ t) \pipe (t\ t')\\
-        Types & \phi \coloneqq&
-        \textbf{1} \pipe \gamma \pipe <x:\phi\ \psi> \pipe (fn\ x:\phi\ \psi) \pipe x:\phi\{P\}\\
-        Propositions & P \coloneqq&
-        false \pipe (=>\ P\ Q) \pipe (forall\ x:\phi\ P) \pipe (F\ t_1\ ...\ t_n)\\
-        &&\pipe (=\ \phi\ t_1\ t_2) \pipe (:>\ \phi\ \psi)
-    \end{tabular}
-    \renewcommand{\arraystretch}{1}
+    \begin{table}
+        \begin{tabular}{|l|l|p{0.508\textwidth}|}
+            \cline{1-3}
+            $true$, $false$ & $bool$ & Literals for the booleans.\\\cline{1-3}
+            $\land$, $\lor$, $\Rightarrow$, $\Leftrightarrow$ & $bool, bool \rightarrow bool$ & Standard binary boolean operators.\\\cline{1-3}
+            $\lnot$ & $bool \rightarrow bool$ & Unary not.\\\cline{1-3}
+            $0$, ..., $255$ & $u8$ & Literals for the 8 bit unsigned integers.\\\cline{1-3}
+            $succ$, $pred$ & $u8 \rightarrow u8$ & The successor and predecessor of a $u8$, which will over/underflow.\\\cline{1-3}
+            $+$, $-$ & $u8, u8 \rightarrow u8$ & Addition and subtraction for $u8$, which will over/underflow.\\\cline{1-3}
+            $u8rec$ & $\tau, (u8 \rightarrow \tau \rightarrow \tau), u8 \rightarrow \tau$ &
+            Iterate over the $u8$s less than a given $u8$ in ascending order.\newline
+            $u8rec\ t\ t'\ 0 \coloneqq t$ \newline
+            $u8rec\ t\ t'\ succ(n) \coloneqq t'\ n\ (u8rec\ t\ t'\ n)$\\\cline{1-3}
+        \end{tabular}
+        \caption{Constants}
+        \label{tab:constants}
+    \end{table}
+
+    \begin{table}
+        \begin{tabular}{|l|l|p{0.725\textwidth}|}
+            \cline{1-3}
+            $bool$ & $bool$ & Interpret a boolean expression as a proposition.\\\cline{1-3}
+            $\textgreater$, $\textless$, $\leq$, $\geq$ & $u8, u8$ & Integer inequalities.\\\cline{1-3}
+        \end{tabular}
+        \caption{Predicates}
+        \label{tab:predicates}
+    \end{table}
+
+    \subsection{Axioms}
+    My $u8rec$ is based on Denney's $natrec$, so has 3 axioms schemas. For each $\phi$
+
+    \begin{center}
+        \typerule{
+            \judgement{n: u8} \quad
+            \judgement{t: \phi[0]} \quad
+            \judgement{t': \Pi_{n:nat} \Pi_{y:\phi[n]} \phi[succ(n)]}
+        }{
+            \judgement{u8rec\ t\ t'\ n: \phi[n]}
+        }
+
+        \vspace{2mm}
+        \typerule{
+            \judgement{t: \phi[0]} \quad
+            \judgement{t': \Pi_{n:nat} \Pi_{y:\phi[n]} \phi[succ(n)]}
+        }{
+            \judgement{u8rec\ t\ t'\ 0 =_{\phi[0]} t}
+        }
+
+        \vspace{2mm}
+        \typerule{
+            \judgement{t: \phi[0]} \quad
+            \judgement{t': \Pi_{n:nat} \Pi_{y:\phi[n]} \phi[succ(n)]}
+        }{
+            \judgement{u8rec\ t\ t'\ succ(n) =_{\phi[succ(n)]} t'\ n\ (u8rec\ t\ t'\ n)}
+        }
+    \end{center}
+
+    \section{Syntax}
+    I add several pieces of syntactic sugar which make the language much more usable.
+
+    $\lambda x_1: \phi_1, ..., x_n: \phi_n . t \coloneqq \lambda x_1: \phi_1 .\ ...\ \lambda x_n: \phi_n . t$
+
+    $let\ x_1: \phi_1 =t_1, ..., x_n: \phi_n =t_n\ in\ u \coloneqq (\lambda x_1: \phi_1, ..., x_n: \phi_n . u)\ t_1\ ...\ t_n$
 
     \section{Operational Semantics}
-    The operational semantics of the language match that of the simply typed lambda calculus with product types.
-    Note that the language is call-by-name, which greatly simplifies the type checker.
+    Denney only focuses on the typing of his calculus, and doesn't describe operational semantics.
+    Since I'm writing a compiler which will produce executables, I need to decide on runtime semantics.
+    I have based these on the simply typed lambda calculus with product types.
 
     \renewcommand{\arraystretch}{2}
     \begin{tabular}{>{$}r<{$}@{ $\rightarrow_\beta$ }>{$}l<{$}}
-        ((fn\ x:\phi\ t)\ t') & t[t'/x]\\
-        (\pi_i\ <t_1\ t_2>) & t_i\\
+        (\lambda x:\phi . t)\ t' & t[t'/x]\\
+        \pi_i (\langle t_1, t_2 \rangle) & t_i\\
     \end{tabular}
     \renewcommand{\arraystretch}{1}
 
     Because of the similarity to the simply typed lambda calculus, it is easy to see that any term which can be
     typed must be strongly normalizing, and thus, all functions are total.
     The semantics of propositions are simply those of first order logic, which I won't repeat here,
-    with the exception of $(:> \phi \psi)$ which means that $\phi$ is a supertype of $\psi$.
+    with the exception of $\phi \sqsupseteq \psi$ which means that $\phi$ is a supertype of $\psi$.
 
     \section{Typing rules}
     The typing rules of the language are formally defined in the appendix of the paper references earlier.
@@ -90,4 +154,7 @@
     \end{itemize}
     The extra condition that the proposition must be true is the only thing that separates the refinement typed
     language from a simply typed language, but it is extremely powerful.
+
+    \bibliographystyle{abbrv}
+    \bibliography{sources}
 \end{document}
