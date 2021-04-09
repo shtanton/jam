@@ -5,6 +5,8 @@
 \usepackage{hyperref}
 \usepackage{array}
 \usepackage[margin=1in]{geometry}
+\usepackage{ebproof}
+\usepackage{alltt}
 
 \newcommand{\pipe}{\ |\ }
 \newcommand{\typerule}[2]{
@@ -122,38 +124,127 @@
     Because of the similarity to the simply typed lambda calculus, it is easy to see that any term which can be
     typed must be strongly normalizing, and thus, all functions are total.
     The semantics of propositions are simply those of first order logic, which I won't repeat here,
-    with the exception of $\phi \sqsupseteq \psi$ which means that $\phi$ is a supertype of $\psi$.
+    with the exception of $\phi \sqsubseteq \psi$ which means that $\phi$ is a supertype of $\psi$.
 
-    \section{Typing rules}
-    The typing rules of the language are formally defined in the appendix of the paper references earlier.
-    As well as the formal rules, we can also assign a more practical meaning to the typing judgements.
-    For these to make sense we need a notion of an environment which can be accepted by a context $\Gamma$.
-    An environment is a value for every variable in the context, and it is accepted by the context of each
-    value is accepted by the type given to it by the context.
+    \section{Type Checking}
+    Denney formally defines the typing rules of his calculus, but an implementation using then is inpractical.
+    Should we want to type check $\judgement{\lambda x: \phi . t: \psi}$, the normal route for a syntax directed
+    approach is to use the (ABS) rule. However, there are examples where our next step must be (EQ).
 
-    \renewcommand{\arraystretch}{2}
-    \begin{tabular}{>{$}r<{$}p{0.7\textwidth}}
-        \Gamma \vdash t : \phi &
-        For any environment that is accepted by $\Gamma$, evaluating $t$ will produce a value which is acceptable
-        to $\phi$. Also any arguments to applications of functions, constants, $\pi_i$ or predicates have values
-        which are acceptable to the type guards on those applications.
-        \\
-        \Gamma \vdash P &
-        $P$ is true for any environment that is accepted by $\Gamma$.
-        \\
-    \end{tabular}
-    \renewcommand{\arraystretch}{1}
+    \begin{center}
+        \begin{prooftree}
+            \hypo{\Gamma, x: \phi \vdash t: \psi}
+            \infer1[(ABS)]{\judgement{\lambda x: \phi . t : \Pi_{x:\phi} \psi}}
+        \end{prooftree} \quad
+        \begin{prooftree}
+            \hypo{\judgement{t =_\phi t'}}
+            \infer1[(EQ)]{\judgement{t: \phi}}
+        \end{prooftree}
+    \end{center}
 
-    The types $<x:\phi\ \psi>$ and $(fn\ x:\phi\ \psi)$ can both be reduced to simple types with refinements
-    that will accept the same set of values.
-    In fact, any type can be written as $x:\sigma\{P\}$ where $\sigma$ is a simple type.
-    A type $x:\sigma\{P\}$ accepts the value of $t$ if both:
+    Reducing the problem using the (EQ) rule is very difficult as we need to produce a suitable $t'$ that permits
+    the generation of the proof tree we desire.
+    Also, the judgement we are trying to prove is now a proposition (a formula in first-order logic) instead of a
+    typing judgement, which requires an algorithm much more complex than the scope of this project to verify
+    efficiently.
+    To enable the compiler to check the types of a program, we use a translation a program for an SMT solver.
+    The first benefit of this approach is that the challenging process of checking a logical formula is handled
+    by an SMT solver which I don't need to write, and the second is that SMT solvers can find a model for a formula
+    as well as giving a boolean result for if the program is satisfiable.
+    We can give the SMT solver a program that causes it to look for possible environments that fit the context
+    which fail the judgement, and then show one of those to the programmer to give them an example value for
+    a variable which prevents the type checker passing.
+    This makes debugging the refinement types much simpler for the programmer.
+    I attach some new meaning to the judgement $\judgement{t: \phi}$, which is interpreted as
+
+    \begin{quote}
+        For any environment that is in the set of accepted values for the context,
+        fully evaluating $t$ using $\beta$ and $\eta$ reduction produces a value which is in the set of accepted
+        values for $\phi$.
+        Also any term passed to $\pi_i$, a constant, a predicate or a function must evaluate to something that
+        is in the set of accepted values for the type guard.
+    \end{quote}
+
+    For example $n:(n:u8)n=_{u8} 4 \vdash (\lambda x: (x:u8)\ even(x) . true)\ n : bool$:
     \begin{itemize}
-        \item In the simply typed lambda calculus, we have that $\sigma$ accepts $t$.
-        \item The proposition $P[t/x]$ is true.
+        \item $x$ is accepted by the type $u8$ for $even$.
+        \item $n$ is accepted by the type $(x:u8)\ even(x)$.
+        \item $\lambda x: (x:u8)\ even(x) . true)\ n$ reduces to $true$ which is accepted by $bool$.
     \end{itemize}
-    The extra condition that the proposition must be true is the only thing that separates the refinement typed
-    language from a simply typed language, but it is extremely powerful.
+    So we conclude that the judgement is derivable using Denney's rules, which indeed it is.
+    I write $\Gamma$ for $n: is4$, $even$ for $(x:u8)\ even(x)$ and $is4$ for $(x:u8)\ x=_{u8}4$.
+    I have left out the trivial detail for brevity.
+
+    \begin{center}
+        \begin{prooftree}[separation=1em,label separation=0.2em,right label template=(\inserttext)]
+            \hypo{...}
+            \infer1[CONST]{\Gamma, x: even \vdash true: bool}
+            \infer1[ABS]{\judgement{\lambda x: even . true: \Pi_{x:even} bool}}
+            \hypo{...}
+            \infer1[VAR]{\judgement{n: is4}}
+            \hypo{...}
+            \infer1{\judgement{even \sqsubseteq is4}}
+            \infer2[WEAKEN]{\judgement{n: even}}
+            \infer2[APP]{\judgement{(\lambda x: even . true)\ n: bool}}
+        \end{prooftree}
+    \end{center}
+
+    This approach requires a definition of a set of values which are accepted by a type.
+    Fortunately, this is easily defined using the definitions Denney originally assigns to $\Pi_{x:\phi} \psi$
+    and $\Sigma_{x:\phi} \psi$ which are of the form $(f: \tau \rightarrow \sigma)P$ and
+    $(z: \tau \times \sigma)P$ respectively.
+    We can use these to define the set of values accepted by a type by first reducing the type to the form
+    $(x: \tau)P$, then the set of accepted values is $\{x \in \tau | P\}$, using the obvious translation
+    to treat $\tau$ as a set.
+
+    We can use an SMT solver to see if every possible value of a term $t$ satisfies a condition $P$ (we check
+    if it is in the base type $\tau$ separately using standard syntax driven type checking).
+    Since finding a possible value of $t$ that does not satisfy $P$ is useful for debugging, we invert $P$ in
+    our SMT program and the type checker will pass if the solver yields unsat.
+    So we task the SMT solver with finding an environment for which $P[t/x]$ does not hold.
+
+    \subsection{Examples}
+    Denney uses the example of a $div2$ function, which makes use of his $natrec$ function.
+    I'll use the same example but with $u8rec$ instead. Using
+    \[
+        div2 \coloneqq \lambda n:u8 . \pi_1 (div2'\ n)
+    \]\[
+        div2' \coloneqq u8rec\ \langle 0, 0 \rangle\ (\lambda x: u8 . \lambda p: u8 \times u8 .
+        \langle \pi_2 (p), \pi_1 (p)+1 \rangle )
+    \]
+    We want to show
+    \[
+        \langle \rangle \vdash div2 : \Pi_{n:u8}(m:u8)n =_{u8} 2m \lor n =_{u8} 2m+1
+    \]\[
+        \langle \rangle \vdash div2' : \Pi_{n:u8} \Sigma_{(m:u8)n =_{u8} 2m \lor n =_{u8} 2m+1} (m': u8) m+m'=n
+    \]
+    Denney already shows how these can be derived using the typing rules, so we can translate the judgements to SMT
+    and expect it to tell us that they are sound.
+    My algorithm translates each typing to a new SMT program, which means running it by hand is tedious, I opt to
+    demonstrate the most interesting example which is that $div2'$ is in the set described by its type.
+    We first seek to find the formula that constrains the set for the type of $div2'$, using Denney's
+    expansion, we see that the type of $div2'$ is equivalent to
+    \[
+        (f: u8 \rightarrow u8 \times u8)P
+    \]\[
+        P \coloneqq \forall n \in u8 .
+        (n = 2 \pi_1 (f n) \lor n = 2 \pi_1 (f n) + 1)
+        \land \pi_1 (f n) + \pi_2 (f n) = n
+    \]
+    We now use the SMT solver to seek a possible environment where this is not true.
+    \begin{alltt}
+        g x p := <second p, (first p) + 1>
+        f n := u8rec <0, 0> g n
+
+        (assert (not (forall ((n u8))
+          (and
+            (or
+              (= n (* 2 (first (f n))))
+              (= n (+ (* 2 (first (f n))) 1)))
+            (= n (+ (first (f n)) (second (f n))))))))
+    \end{alltt}
+
+    I'll go into more detail on the translation to an SMT program later.
 
     \bibliographystyle{abbrv}
     \bibliography{sources}
