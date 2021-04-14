@@ -17,6 +17,13 @@ use crate::semantic::{UnrefinedType, Identifier};
 use crate::syntax::{Constant, Predicate};
 use std::collections::HashMap;
 
+struct ConstantDeclarations {
+}
+
+struct PredicateDeclarations<'a> {
+    prop: FuncDecl<'a>,
+}
+
 struct PairData<'a> {
     zsort: ZSort<'a>,
     pair: FuncDecl<'a>,
@@ -36,12 +43,25 @@ struct Z3Translater<'a> {
     one: ZSort<'a>,
     ast: FuncDecl<'a>,
     bool: ZSort<'a>,
-    constants: HashMap<Constant, FuncDecl<'a>>,
-    predicates: HashMap<Predicate, FuncDecl<'a>>,
+    constants: ConstantDeclarations,
+    predicates: PredicateDeclarations<'a>,
     variables: HashMap<Identifier, FuncDecl<'a>>,
 }
 
 impl<'a> Z3Translater<'a> {
+    fn translate_constant_call(&self, constant: Constant, args: &[&Dynamic<'a>]) -> Dynamic<'a> {
+        match constant {
+            Constant::True => Bool::from_bool(self.ctx, true).into(),
+            Constant::False => Bool::from_bool(self.ctx, false).into(),
+        }
+    }
+
+    fn translate_predicate_call(&self, predicate: Predicate, args: &[&Dynamic<'a>]) -> Dynamic<'a> {
+        match predicate {
+            Predicate::Prop => self.predicates.prop.apply(args),
+        }
+    }
+
     fn get_zsort(&self, typ: &UnrefinedType) -> Option<&ZSort<'a>> {
         match typ {
             UnrefinedType::One => Some(&self.one),
@@ -55,14 +75,14 @@ impl<'a> Z3Translater<'a> {
         }
     }
 
-    fn define_const(&mut self, id: Identifier, typ: UnrefinedType) -> Result<(), ()> {
+    fn define_var(&mut self, id: Identifier, typ: UnrefinedType) -> Result<(), ()> {
         let zsort = self.get_zsort(&typ).ok_or(())?;
         let func_decl = FuncDecl::new(self.ctx, format!("x!{}", id), &[], zsort);
         self.variables.insert(id, func_decl);
         Ok(())
     }
 
-    fn get_const(&self, id: Identifier) -> Result<Dynamic<'a>, ()> {
+    fn get_var(&self, id: Identifier) -> Result<Dynamic<'a>, ()> {
         let func_decl = self.variables.get(&id).ok_or(())?;
         Ok(func_decl.apply(&[]))
     }
@@ -84,12 +104,12 @@ impl<'a> Z3Translater<'a> {
     fn translate_expression(&mut self, expr: Expression) -> Result<Dynamic<'a>, ()> {
         Ok(match expr {
             Expression::Variable(id) => {
-                self.get_const(id)?
+                self.get_var(id)?
             },
             Expression::Forall(id, typ, body) => {
-                self.define_const(id, typ)?;
+                self.define_var(id, typ)?;
                 let body = self.translate_expression(*body)?;
-                let x = self.get_const(id)?;
+                let x = self.get_var(id)?;
                 forall_const(self.ctx, &[&x], &[], &body)
             },
             Expression::False => {
@@ -118,7 +138,7 @@ impl<'a> Z3Translater<'a> {
                     Function::Constant(constant) => {
                         let zargs = self.translate_expressions(args)?;
                         let zargs_ref: Vec<_> = zargs.iter().collect();
-                        self.constants.get(&constant).as_ref().ok_or(())?.apply(zargs_ref.as_slice())
+                        self.translate_constant_call(constant, zargs_ref.as_slice())
                     },
                     Function::Equal => {
                         let zargs = self.translate_expressions(args)?;
@@ -149,7 +169,7 @@ impl<'a> Z3Translater<'a> {
                     Function::Predicate(pred) => {
                         let zargs = self.translate_expressions(args)?;
                         let zargs_ref: Vec<_> = zargs.iter().collect();
-                        self.predicates.get(&pred).as_ref().ok_or(())?.apply(zargs_ref.as_slice())
+                        self.translate_predicate_call(pred, zargs_ref.as_slice())
                     },
                     Function::Second(first_type, second_type) => {
                         let zargs = self.translate_expressions(args)?;
@@ -163,7 +183,6 @@ impl<'a> Z3Translater<'a> {
     }
 
     fn run_smt(mut self, smt: Smt) -> Result<bool, ()> {
-        // TODO declarations
         let Smt {declarations, assertions, types} = smt;
         for typ in types.into_iter() {
             match &typ {
@@ -212,7 +231,7 @@ impl<'a> Z3Translater<'a> {
             }
         }
         for declaration in declarations.into_iter() {
-            self.define_const(declaration.id, declaration.typ)?;
+            self.define_var(declaration.id, declaration.typ)?;
         }
         let solver = Solver::new(self.ctx);
         for assertion in assertions.into_iter() {
@@ -231,7 +250,10 @@ pub fn run_smt(smt: Smt) -> bool {
     let ctx = Context::new(&cfg);
     let (one, mut ast_vec, _) = ZSort::enumeration(&ctx, Symbol::String(String::from("1")), &[Symbol::String(String::from("*"))]);
     let bool_zsort = ZSort::bool(&ctx);
-    // TODO constants and predicates
+    let constants = ConstantDeclarations {};
+    let predicates = PredicateDeclarations {
+        prop: FuncDecl::new(&ctx, "prop", &[&bool_zsort], &bool_zsort),
+    };
     let translater = Z3Translater {
         fn_map: HashMap::new(),
         pair_map: HashMap::new(),
@@ -239,8 +261,8 @@ pub fn run_smt(smt: Smt) -> bool {
         one,
         ast: ast_vec.pop().unwrap(),
         bool: bool_zsort,
-        constants: HashMap::new(),
-        predicates: HashMap::new(),
+        constants,
+        predicates,
         variables: HashMap::new(),
     };
     translater.run_smt(smt).unwrap_or(false)

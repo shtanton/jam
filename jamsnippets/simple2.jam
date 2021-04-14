@@ -1,7 +1,7 @@
 (
 	(fn x:x:bool{(prop x)} (false))
 	(
-		(fn x:bool (true))
-		(false)
+		(fn x:bool (false))
+		(true)
 	)
 )
