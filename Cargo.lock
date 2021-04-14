@@ -79,10 +79,8 @@ name = "jam"
 version = "0.1.0"
 dependencies = [
  "im",
- "lazy_static",
  "llvm-sys",
  "nom",
- "regex",
  "z3",
 ]
 
@@ -262,9 +260,9 @@ checksum = "85e60b0d1b5f99db2556934e21937020776a5d31520bf169e851ac44e6420214"
 
 [[package]]
 name = "z3"
-version = "0.6.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0354c65dfe00e08c4ab30581732906874f97156f424bfb390cf0cca2cb6ac29"
+checksum = "05b1c80cd890d936ecafd439e757113a397f5797b12232b29c443256dd02c07b"
 dependencies = [
  "lazy_static",
  "log",
@@ -273,6 +271,6 @@ dependencies = [
 
 [[package]]
 name = "z3-sys"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1863cafae8eb86dd7d69c9218421b288594e8836346e93d4f36ade427195a21"
+checksum = "afa18ba5fbd4933e41ffb440c3fd91f91fe9cdb7310cce3ddfb6648563811de0"

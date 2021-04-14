@@ -21,7 +21,7 @@ pub enum Type {
 }
 
 impl Type {
-    fn unrefine(&self) -> UnrefinedType {
+    pub fn unrefine(&self) -> UnrefinedType {
         match self {
             Type::One => UnrefinedType::One,
             Type::Bool => UnrefinedType::Bool,

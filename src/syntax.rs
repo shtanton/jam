@@ -30,7 +30,7 @@ pub enum Proposition {
     Subtype(Box<Type>, Box<Type>),
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Predicate {
     Prop,
 }
@@ -52,7 +52,7 @@ impl Predicate {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Constant {
     True,
     False,

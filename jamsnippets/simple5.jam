@@ -1,0 +1,7 @@
+(
+	(
+		(fn x:bool (fn y: bool x))
+		(true)
+	)
+	(false)
+)
