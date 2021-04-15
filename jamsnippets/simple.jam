@@ -1,4 +1,8 @@
 (
-	(fn f:f:(fn x:bool bool){(prop (f (false)))} (f (true)))
+	(
+		fn
+		f:f:(fn x:bool bool){(prop (f (false)))}
+		(f (true))
+	)
 	(fn x:bool x)
 )

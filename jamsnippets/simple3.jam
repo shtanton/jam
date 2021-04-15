@@ -1,4 +1,4 @@
 (
 	(fn x:x:bool{(= bool x (false))} (true))
-	(false)
+	(true)
 )

@@ -3,7 +3,7 @@ use crate::smt::translate_judgement_to_smt;
 use crate::syntax::{
     Constant, Expression as SExpression, Predicate, Proposition as SProposition, Type as SType,
 };
-use crate::to_z3::run_smt;
+use crate::to_z3::{run_smt, SmtResult};
 use im::{HashMap as ImHashMap, Vector as ImVec};
 use std::collections::HashMap;
 use std::fmt;
@@ -581,10 +581,13 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
     for (i, smt) in smt_programs.into_iter().enumerate() {
         println!("Program {}:", i);
         println!("{}", smt);
-        if run_smt(smt) {
-            println!("PASS");
-        } else {
-            println!("FAIL");
+        match run_smt(smt).map_err(|_| "error running SMT solver".to_string())? {
+            SmtResult::Pass => {
+                println!("PASS");
+            }
+            _ => {
+                println!("FAIL");
+            }
         }
     }
     Ok(ast)

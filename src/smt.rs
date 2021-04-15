@@ -105,7 +105,9 @@ impl fmt::Display for Function {
             Function::And => write!(fmt, "and")?,
             Function::Predicate(pred) => write!(fmt, "{}", pred)?,
             Function::Constant(constant) => write!(fmt, "{}", constant)?,
-            Function::Apply(param_type, body_type) => write!(fmt, "apply_{}->{}", param_type, body_type)?,
+            Function::Apply(param_type, body_type) => {
+                write!(fmt, "apply_{}->{}", param_type, body_type)?
+            }
         }
         Ok(())
     }
@@ -122,16 +124,19 @@ impl<'a> ToSmt<'a> {
     }
 
     fn register_type(&mut self, typ: &UnrefinedType) {
-        if typ == &UnrefinedType::One || typ == &UnrefinedType::Bool || self.types.iter().any(|t| t==typ) {
+        if typ == &UnrefinedType::One
+            || typ == &UnrefinedType::Bool
+            || self.types.iter().any(|t| t == typ)
+        {
             return;
         }
         match typ {
-            UnrefinedType::One | UnrefinedType::Bool => {},
+            UnrefinedType::One | UnrefinedType::Bool => {}
             UnrefinedType::Product(contents) | UnrefinedType::Function(contents) => {
                 self.register_type(&contents.0);
                 self.register_type(&contents.1);
                 self.types.push(typ.clone());
-            },
+            }
         }
     }
 
@@ -143,12 +148,17 @@ impl<'a> ToSmt<'a> {
                 let tuple_id = self.next_id();
                 let (first_id, first_type, mut first_prop) = self.simplify(contents.0)?;
                 let (second_id, second_type, mut second_prop) = self.simplify(contents.1)?;
-                let first_call =
-                    Expression::Call(Function::First(first_type.clone(), second_type.clone()), vec![Expression::Variable(tuple_id)]);
+                let first_call = Expression::Call(
+                    Function::First(first_type.clone(), second_type.clone()),
+                    vec![Expression::Variable(tuple_id)],
+                );
                 first_prop.substitute(&first_call, first_id);
                 second_prop.substitute(&first_call, id);
                 second_prop.substitute(
-                    &Expression::Call(Function::Second(first_type.clone(), second_type.clone()), vec![Expression::Variable(tuple_id)]),
+                    &Expression::Call(
+                        Function::Second(first_type.clone(), second_type.clone()),
+                        vec![Expression::Variable(tuple_id)],
+                    ),
                     second_id,
                 );
                 (
@@ -161,7 +171,8 @@ impl<'a> ToSmt<'a> {
                 let function_id = self.next_id();
                 let (param_id, param_type, mut param_prop) = self.simplify(contents.0)?;
                 let (body_id, body_type, mut body_prop) = self.simplify(contents.1)?;
-                let typ = UnrefinedType::Function(Box::new((param_type.clone(), body_type.clone())));
+                let typ =
+                    UnrefinedType::Function(Box::new((param_type.clone(), body_type.clone())));
                 param_prop.substitute(&Expression::Variable(id), param_id);
                 body_prop.substitute(
                     &Expression::Call(
@@ -207,46 +218,53 @@ impl<'a> ToSmt<'a> {
                     .collect::<Result<_, ()>>()?,
             ),
             LExpression::Tuple(contents) => {
-                let (first_type, second_type) = (contents.0.unrefined_type()?, contents.1.unrefined_type()?);
+                let (first_type, second_type) =
+                    (contents.0.unrefined_type()?, contents.1.unrefined_type()?);
                 self.register_type(&first_type);
                 self.register_type(&second_type);
                 Expression::Call(
-                    Function::Pair(
-                        first_type,
-                        second_type,
-                    ),
+                    Function::Pair(first_type, second_type),
                     vec![
                         self.translate_expression(contents.0)?,
                         self.translate_expression(contents.1)?,
                     ],
                 )
-            },
+            }
             LExpression::First(arg) => {
-                let (first_type, second_type) = if let UnrefinedType::Product(contents) = arg.unrefined_type()? {
-                    (contents.0, contents.1)
-                } else {
-                    return Err(());
-                };
+                let (first_type, second_type) =
+                    if let UnrefinedType::Product(contents) = arg.unrefined_type()? {
+                        (contents.0, contents.1)
+                    } else {
+                        return Err(());
+                    };
                 self.register_type(&first_type);
                 self.register_type(&second_type);
-                Expression::Call(Function::First(first_type, second_type), vec![self.translate_expression(*arg)?])
+                Expression::Call(
+                    Function::First(first_type, second_type),
+                    vec![self.translate_expression(*arg)?],
+                )
             }
             LExpression::Second(arg) => {
-                let (first_type, second_type) = if let UnrefinedType::Product(contents) = arg.unrefined_type()? {
-                    (contents.0, contents.1)
-                } else {
-                    return Err(());
-                };
+                let (first_type, second_type) =
+                    if let UnrefinedType::Product(contents) = arg.unrefined_type()? {
+                        (contents.0, contents.1)
+                    } else {
+                        return Err(());
+                    };
                 self.register_type(&first_type);
                 self.register_type(&second_type);
-                Expression::Call(Function::Second(first_type, second_type), vec![self.translate_expression(*arg)?])
+                Expression::Call(
+                    Function::Second(first_type, second_type),
+                    vec![self.translate_expression(*arg)?],
+                )
             }
             LExpression::Application(contents) => {
-                let (param_type, body_type) = if let UnrefinedType::Function(contents) = contents.0.unrefined_type()? {
-                    (contents.0, contents.1)
-                } else {
-                    return Err(());
-                };
+                let (param_type, body_type) =
+                    if let UnrefinedType::Function(contents) = contents.0.unrefined_type()? {
+                        (contents.0, contents.1)
+                    } else {
+                        return Err(());
+                    };
                 self.register_type(&param_type);
                 self.register_type(&body_type);
                 Expression::Call(
@@ -256,7 +274,7 @@ impl<'a> ToSmt<'a> {
                         self.translate_expression(contents.1)?,
                     ],
                 )
-            },
+            }
         })
     }
 
@@ -412,19 +430,22 @@ impl<'a> ToSmt<'a> {
         assertions.push(Expression::Forall(
             var1,
             UnrefinedType::Bool,
-            Box::new(Expression::Call(Function::Equal, vec![
-                Expression::Call(Function::Predicate(Predicate::Prop), vec![Expression::Variable(var1)]),
-                Expression::Variable(var1),
-            ])),
+            Box::new(Expression::Call(
+                Function::Equal,
+                vec![
+                    Expression::Call(
+                        Function::Predicate(Predicate::Prop),
+                        vec![Expression::Variable(var1)],
+                    ),
+                    Expression::Variable(var1),
+                ],
+            )),
         ));
         for defn in context.into_iter() {
             let (id, typ, mut prop) = self.simplify(defn.1)?;
             self.register_type(&typ);
             prop.substitute(&Expression::Variable(defn.0), id);
-            declarations.push(Declaration {
-                id: defn.0,
-                typ,
-            });
+            declarations.push(Declaration { id: defn.0, typ });
             assertions.push(prop);
         }
         let (id, _, mut prop) = self.simplify(typ)?;
