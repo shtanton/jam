@@ -5,7 +5,7 @@ use nom::{
     character::complete::{alphanumeric0, multispace0 as ws0, multispace1 as ws1},
     complete, do_parse,
     error::{Error, ErrorKind},
-    many0, map, named, preceded, separated_list0, tag, Err, IResult, Needed,
+    many0, map, named, preceded, separated_list0, separated_list1, tag, Err, IResult, Needed,
 };
 use std::fmt;
 
@@ -246,6 +246,30 @@ named!(expression_ast(&str) -> Expression, do_parse!(
     (Expression::Ast)
 ));
 
+named!(definition(&str) -> (Identifier, Type, Expression), do_parse!(
+    char!('(') >> ws0 >>
+    id: identifier >> ws0 >> char!(':') >> ws0 >>
+    t: typ >> ws0 >> char!('=') >> ws0 >>
+    e: expression >> ws0 >> char!(')') >>
+    ((id, t, e))
+));
+
+named!(expression_let(&str) -> Expression, do_parse!(
+    char!('(') >> ws0 >> tag!("let") >> ws1 >>
+    defns: separated_list1!(ws1, definition) >> ws1 >> tag!("in") >> ws1 >>
+    e: expression >> ws0 >> char!(')') >>
+    ({
+        let mut expr = e;
+        for (id, t, value) in defns.into_iter().rev() {
+            expr = Expression::Application(
+                Box::new(Expression::Abstraction(id, Box::new(t), Box::new(expr))),
+                Box::new(value),
+            );
+        }
+        expr
+    })
+));
+
 named!(expression(&str) -> Expression, alt!(
     expression_abstraction |
     expression_first |
@@ -254,7 +278,8 @@ named!(expression(&str) -> Expression, alt!(
     expression_ast |
     expression_application |
     expression_variable |
-    expression_tuple
+    expression_tuple |
+    expression_let
 ));
 
 named!(program(&str) -> Expression, do_parse!(

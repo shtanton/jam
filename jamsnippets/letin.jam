@@ -1,0 +1,5 @@
+(let
+	(x: x:bool{(= bool x (true))} = (false))
+	(y: bool = (false)) in
+	x
+)
