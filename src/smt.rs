@@ -426,21 +426,6 @@ impl<'a> ToSmt<'a> {
         } = judgement;
         let mut declarations = Vec::new();
         let mut assertions = Vec::new();
-        let var1 = self.next_id();
-        assertions.push(Expression::Forall(
-            var1,
-            UnrefinedType::Bool,
-            Box::new(Expression::Call(
-                Function::Equal,
-                vec![
-                    Expression::Call(
-                        Function::Predicate(Predicate::Prop),
-                        vec![Expression::Variable(var1)],
-                    ),
-                    Expression::Variable(var1),
-                ],
-            )),
-        ));
         for defn in context.into_iter() {
             let (id, typ, mut prop) = self.simplify(defn.1)?;
             self.register_type(&typ);

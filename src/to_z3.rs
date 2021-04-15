@@ -16,9 +16,7 @@ pub enum SmtResult {
 
 struct ConstantDeclarations {}
 
-struct PredicateDeclarations<'a> {
-    prop: FuncDecl<'a>,
-}
+struct PredicateDeclarations {}
 
 struct PairData<'a> {
     zsort: ZSort<'a>,
@@ -40,22 +38,68 @@ struct Z3Translater<'a> {
     ast: FuncDecl<'a>,
     bool: ZSort<'a>,
     constants: ConstantDeclarations,
-    predicates: PredicateDeclarations<'a>,
+    predicates: PredicateDeclarations,
     variables: HashMap<Identifier, FuncDecl<'a>>,
 }
 
 impl<'a> Z3Translater<'a> {
-    fn translate_constant_call(&self, constant: Constant, args: &[&Dynamic<'a>]) -> Dynamic<'a> {
-        match constant {
+    fn translate_constant_call(
+        &self,
+        constant: Constant,
+        mut args: Vec<Dynamic<'a>>,
+    ) -> Result<Dynamic<'a>, ()> {
+        Ok(match constant {
             Constant::True => Bool::from_bool(self.ctx, true).into(),
             Constant::False => Bool::from_bool(self.ctx, false).into(),
-        }
+            Constant::And => {
+                let bool_args = args
+                    .iter()
+                    .map(|arg| arg.as_bool())
+                    .collect::<Option<Vec<Bool<'a>>>>()
+                    .ok_or(())?;
+                Bool::and(self.ctx, bool_args.iter().collect::<Vec<_>>().as_slice()).into()
+            }
+            Constant::Or => {
+                let bool_args = args
+                    .iter()
+                    .map(|arg| arg.as_bool())
+                    .collect::<Option<Vec<Bool<'a>>>>()
+                    .ok_or(())?;
+                Bool::or(self.ctx, bool_args.iter().collect::<Vec<_>>().as_slice()).into()
+            }
+            Constant::Implies => {
+                let bool_args = args
+                    .iter()
+                    .map(|arg| arg.as_bool())
+                    .collect::<Option<Vec<Bool<'a>>>>()
+                    .ok_or(())?;
+                bool_args[0].implies(&bool_args[1]).into()
+            }
+            Constant::DblImplies => {
+                let bool_args = args
+                    .iter()
+                    .map(|arg| arg.as_bool())
+                    .collect::<Option<Vec<Bool<'a>>>>()
+                    .ok_or(())?;
+                let left = bool_args[0].implies(&bool_args[1]);
+                let right = bool_args[1].implies(&bool_args[0]);
+                Bool::and(self.ctx, &[&left, &right]).into()
+            }
+            Constant::Not => {
+                let bool_arg = args.pop().ok_or(())?.as_bool().ok_or(())?;
+                bool_arg.not().into()
+            }
+        })
     }
 
-    fn translate_predicate_call(&self, predicate: Predicate, args: &[&Dynamic<'a>]) -> Dynamic<'a> {
-        match predicate {
-            Predicate::Prop => self.predicates.prop.apply(args),
-        }
+    fn translate_predicate_call(
+        &self,
+        predicate: Predicate,
+        mut args: Vec<Dynamic<'a>>,
+    ) -> Result<Dynamic<'a>, ()> {
+        Ok(match predicate {
+            Predicate::Prop => args.pop().ok_or(())?,
+        })
     }
 
     fn get_zsort(&self, typ: &UnrefinedType) -> Option<&ZSort<'a>> {
@@ -139,8 +183,7 @@ impl<'a> Z3Translater<'a> {
                 }
                 Function::Constant(constant) => {
                     let zargs = self.translate_expressions(args)?;
-                    let zargs_ref: Vec<_> = zargs.iter().collect();
-                    self.translate_constant_call(constant, zargs_ref.as_slice())
+                    self.translate_constant_call(constant, zargs)?
                 }
                 Function::Equal => {
                     let zargs = self.translate_expressions(args)?;
@@ -178,8 +221,7 @@ impl<'a> Z3Translater<'a> {
                 }
                 Function::Predicate(pred) => {
                     let zargs = self.translate_expressions(args)?;
-                    let zargs_ref: Vec<_> = zargs.iter().collect();
-                    self.translate_predicate_call(pred, zargs_ref.as_slice())
+                    self.translate_predicate_call(pred, zargs)?
                 }
                 Function::Second(first_type, second_type) => {
                     let zargs = self.translate_expressions(args)?;
@@ -285,9 +327,7 @@ pub fn run_smt(smt: Smt) -> Result<SmtResult, ()> {
     );
     let bool_zsort = ZSort::bool(&ctx);
     let constants = ConstantDeclarations {};
-    let predicates = PredicateDeclarations {
-        prop: FuncDecl::new(&ctx, "prop", &[&bool_zsort], &bool_zsort),
-    };
+    let predicates = PredicateDeclarations {};
     let translater = Z3Translater {
         fn_map: HashMap::new(),
         pair_map: HashMap::new(),

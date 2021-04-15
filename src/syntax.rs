@@ -57,29 +57,63 @@ impl Predicate {
 pub enum Constant {
     True,
     False,
+    And,
+    Or,
+    Implies,
+    DblImplies,
+    Not,
 }
 
 impl Constant {
     pub fn return_type(&self) -> UnrefinedType {
         match self {
-            Constant::True | Constant::False => UnrefinedType::Bool,
+            Constant::True
+            | Constant::False
+            | Constant::And
+            | Constant::Or
+            | Constant::Implies
+            | Constant::DblImplies
+            | Constant::Not => UnrefinedType::Bool,
         }
     }
 
     pub fn accepts_args(&self, args: &Vec<SExpression>) -> bool {
         match self {
             Constant::False | Constant::True => args.len() == 0,
+            Constant::And | Constant::Or | Constant::Implies | Constant::DblImplies => {
+                if args.len() != 2 {
+                    return false;
+                }
+                match (&args[0].typ, &args[1].typ) {
+                    (UnrefinedType::Bool, UnrefinedType::Bool) => true,
+                    _ => false,
+                }
+            }
+            Constant::Not => {
+                if args.len() != 1 {
+                    return false;
+                }
+                args[0].typ == UnrefinedType::Bool
+            }
         }
     }
 }
 
 impl fmt::Display for Constant {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Constant::True => write!(fmt, "true")?,
-            Constant::False => write!(fmt, "false")?,
-        }
-        Ok(())
+        write!(
+            fmt,
+            "{}",
+            match self {
+                Constant::True => "true",
+                Constant::False => "false",
+                Constant::And => "and",
+                Constant::Or => "or",
+                Constant::Implies => "=>",
+                Constant::DblImplies => "<=>",
+                Constant::Not => "not",
+            }
+        )
     }
 }
 
@@ -211,12 +245,17 @@ named!(proposition(&str) -> Proposition, alt!(
 ));
 
 named!(predicate(&str) -> Predicate, alt!(
-    map!(tag!("prop"), |_| Predicate::Prop)
+    map!(tag!("bool"), |_| Predicate::Prop)
 ));
 
 named!(constant(&str) -> Constant, alt!(
     map!(tag!("true"), |_| Constant::True) |
-    map!(tag!("false"), |_| Constant::False)
+    map!(tag!("false"), |_| Constant::False) |
+    map!(tag!("and"), |_| Constant::And) |
+    map!(tag!("or"), |_| Constant::Or) |
+    map!(tag!("=>"), |_| Constant::Implies) |
+    map!(tag!("<=>"), |_| Constant::DblImplies) |
+    map!(tag!("not"), |_| Constant::Not)
 ));
 
 named!(expression_variable(&str) -> Expression, map!(identifier, Expression::Variable));
@@ -333,10 +372,16 @@ named!(program(&str) -> Expression, do_parse!(
 ));
 
 pub fn parse(input: &str) -> Result<Expression, String> {
-    let (remaining, ast) = program(input).map_err(|_| "parse error".to_string())?;
+    let (remaining, ast) = program(input).map_err(|err| match err {
+        Err::Incomplete(needed) => format!("Parsing error: Needed {:?}", needed),
+        Err::Error(err) | Err::Failure(err) => format!(
+            "Parsing error: input: {}, error code: {:?}",
+            err.input, err.code
+        ),
+    })?;
     if remaining.len() == 0 {
         Ok(ast)
     } else {
-        Err("parse error".to_string())
+        Err("Parsing error, reached EOF too early".to_string())
     }
 }

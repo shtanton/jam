@@ -1,0 +1,6 @@
+(let
+	xor: (fn x:bool, y:bool z:bool{(bool
+		(<=> (<=> x y) (not z)))})
+		= (fn x:bool, y:bool (or (and x (not y)) (and (not x) y)))
+	in
+	(xor (true), (true)))
