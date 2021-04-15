@@ -1,8 +1,5 @@
-(
-	(
-		fn 
-		swap: (fn x:bool (fn y:bool z:<a:bool bool>{(=> (prop x) (prop (second z)))}))
-		(second ((swap (true)) (false)))
-	)
-	(fn x:bool (fn y:bool <y x>))
-)
+(let
+	swap: (fn x:bool, y:bool <a:bool b:bool{(and (= bool x b) (= bool y a))}>)
+		= (fn x:bool, y:bool <y x>)
+	in
+	(second (swap (true), (false))))

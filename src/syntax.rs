@@ -5,7 +5,8 @@ use nom::{
     character::complete::{alphanumeric0, multispace0 as ws0, multispace1 as ws1},
     complete, do_parse,
     error::{Error, ErrorKind},
-    many0, map, named, preceded, separated_list0, separated_list1, tag, Err, IResult, Needed,
+    many0, map, named, preceded, separated_list0, separated_list1, tag, tuple, Err, IResult,
+    Needed,
 };
 use std::fmt;
 
@@ -108,10 +109,15 @@ named!(typ_product(&str) -> Type, do_parse!(
 
 named!(typ_function(&str) -> Type, do_parse!(
     char!('(') >> ws0 >> tag!("fn") >> ws1 >>
-    id: identifier >> ws0 >> char!(':') >> ws0 >>
-    argtyp: typ >> ws1 >>
+    params: parameter_list >> ws1 >>
     bodytyp: typ >> ws0 >> char!(')') >>
-    (Type::Function(id, Box::new(argtyp), Box::new(bodytyp)))
+    ({
+        let mut t = bodytyp;
+        for (id, typ) in params.into_iter().rev() {
+            t = Type::Function(id, Box::new(typ), Box::new(t));
+        }
+        t
+    })
 ));
 
 named!(typ_refinement(&str) -> Type, do_parse!(
@@ -178,13 +184,30 @@ named!(proposition_call(&str) -> Proposition, do_parse!(
     (Proposition::Call(pred, args))
 ));
 
+named!(proposition_and(&str) -> Proposition, do_parse!(
+    char!('(') >> ws0 >> tag!("and") >> ws1 >>
+    left: proposition >> ws1 >>
+    right: proposition >> ws0 >> char!(')') >>
+    (Proposition::Implies(
+        Box::new(Proposition::Implies(
+            Box::new(left),
+            Box::new(Proposition::Implies(
+                Box::new(right),
+                Box::new(Proposition::False),
+            )),
+        )),
+        Box::new(Proposition::False),
+    ))
+));
+
 named!(proposition(&str) -> Proposition, alt!(
     proposition_false |
     proposition_implies |
     proposition_forall |
     proposition_equal |
     proposition_subtype |
-    proposition_call
+    proposition_call |
+    proposition_and
 ));
 
 named!(predicate(&str) -> Predicate, alt!(
@@ -214,19 +237,41 @@ named!(expression_call(&str) -> Expression, do_parse!(
     (Expression::Call(c, args))
 ));
 
+named!(parameter(&str) -> (Identifier, Type), do_parse!(
+    id: identifier >> ws0 >> char!(':') >> ws0 >>
+    t: typ >>
+    ((id, t))
+));
+
+named!(parameter_list(&str) -> Vec<(Identifier, Type)>, separated_list1!(
+    tuple!(ws0, char!(','), ws0),
+    parameter
+));
+
 named!(expression_abstraction(&str) -> Expression, do_parse!(
     char!('(') >> ws0 >> tag!("fn") >> ws1 >>
-    id: identifier >> ws0 >> char!(':') >> ws0 >>
-    t: typ >> ws1 >>
+    params: parameter_list >> ws1 >>
     body: expression >> ws0 >> char!(')') >>
-    (Expression::Abstraction(id, Box::new(t), Box::new(body)))
+    ({
+        let mut expr = body;
+        for (id, typ) in params.into_iter().rev() {
+            expr = Expression::Abstraction(id, Box::new(typ), Box::new(expr));
+        }
+        expr
+    })
 ));
 
 named!(expression_application(&str) -> Expression, do_parse!(
     char!('(') >> ws0 >>
     f: expression >> ws1 >>
-    arg: expression >> ws0 >> char!(')') >>
-    (Expression::Application(Box::new(f), Box::new(arg)))
+    args: separated_list1!(tuple!(ws0, char!(','), ws0), expression) >> ws0 >> char!(')') >>
+    ({
+        let mut expr = f;
+        for arg in args.into_iter() {
+            expr = Expression::Application(Box::new(expr), Box::new(arg));
+        }
+        expr
+    })
 ));
 
 named!(expression_first(&str) -> Expression, do_parse!(
@@ -247,10 +292,9 @@ named!(expression_ast(&str) -> Expression, do_parse!(
 ));
 
 named!(definition(&str) -> (Identifier, Type, Expression), do_parse!(
-    char!('(') >> ws0 >>
     id: identifier >> ws0 >> char!(':') >> ws0 >>
     t: typ >> ws0 >> char!('=') >> ws0 >>
-    e: expression >> ws0 >> char!(')') >>
+    e: expression >>
     ((id, t, e))
 ));
 
