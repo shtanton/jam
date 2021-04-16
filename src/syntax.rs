@@ -2,11 +2,11 @@ extern crate nom;
 use crate::semantic::{Expression as SExpression, UnrefinedType};
 use nom::{
     alt, char,
-    character::complete::{alphanumeric0, multispace0 as ws0, multispace1 as ws1},
+    character::complete::{alphanumeric0, digit1, multispace0 as ws0, multispace1 as ws1},
     complete, do_parse,
     error::{Error, ErrorKind},
-    many0, map, named, preceded, separated_list0, separated_list1, tag, tuple, Err, IResult,
-    Needed,
+    many0, map, map_res, named, preceded, separated_list0, separated_list1, tag, tuple, Err,
+    IResult, Needed,
 };
 use std::fmt;
 
@@ -63,6 +63,7 @@ pub enum Constant {
     Implies,
     DblImplies,
     Not,
+    U8(u8),
 }
 
 impl Constant {
@@ -75,12 +76,13 @@ impl Constant {
             | Constant::Implies
             | Constant::DblImplies
             | Constant::Not => UnrefinedType::Bool,
+            Constant::U8(_) => UnrefinedType::U8,
         }
     }
 
     pub fn accepts_args(&self, args: &Vec<SExpression>) -> bool {
         match self {
-            Constant::False | Constant::True => args.len() == 0,
+            Constant::False | Constant::True | Constant::U8(_) => args.len() == 0,
             Constant::And | Constant::Or | Constant::Implies | Constant::DblImplies => {
                 if args.len() != 2 {
                     return false;
@@ -102,19 +104,16 @@ impl Constant {
 
 impl fmt::Display for Constant {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            fmt,
-            "{}",
-            match self {
-                Constant::True => "true",
-                Constant::False => "false",
-                Constant::And => "and",
-                Constant::Or => "or",
-                Constant::Implies => "=>",
-                Constant::DblImplies => "<=>",
-                Constant::Not => "not",
-            }
-        )
+        match self {
+            Constant::True => write!(fmt, "true"),
+            Constant::False => write!(fmt, "false"),
+            Constant::And => write!(fmt, "and"),
+            Constant::Or => write!(fmt, "or"),
+            Constant::Implies => write!(fmt, "=>"),
+            Constant::DblImplies => write!(fmt, "<=>"),
+            Constant::Not => write!(fmt, "not"),
+            Constant::U8(v) => write!(fmt, "{}", v),
+        }
     }
 }
 
@@ -251,6 +250,11 @@ named!(predicate(&str) -> Predicate, alt!(
     map!(tag!("bool"), |_| Predicate::Prop)
 ));
 
+named!(parse_u8(&str) -> u8, map_res!(
+    digit1,
+    |s: &str| s.parse::<u8>()
+));
+
 named!(constant(&str) -> Constant, alt!(
     map!(tag!("true"), |_| Constant::True) |
     map!(tag!("false"), |_| Constant::False) |
@@ -258,7 +262,8 @@ named!(constant(&str) -> Constant, alt!(
     map!(tag!("or"), |_| Constant::Or) |
     map!(tag!("=>"), |_| Constant::Implies) |
     map!(tag!("<=>"), |_| Constant::DblImplies) |
-    map!(tag!("not"), |_| Constant::Not)
+    map!(tag!("not"), |_| Constant::Not) |
+    map!(parse_u8, |v| Constant::U8(v))
 ));
 
 named!(expression_variable(&str) -> Expression, map!(identifier, Expression::Variable));

@@ -26,6 +26,7 @@ impl Default for IdentifierGenerator {
     }
 }
 
+#[derive(Debug)]
 pub struct Judgement {
     pub context: Vec<(Identifier, Type)>,
     pub expression: Expression,
@@ -153,7 +154,8 @@ impl PartialEq for UnrefinedType {
     fn eq(&self, other: &UnrefinedType) -> bool {
         match (self, other) {
             (UnrefinedType::One, UnrefinedType::One)
-            | (UnrefinedType::Bool, UnrefinedType::Bool) => true,
+            | (UnrefinedType::Bool, UnrefinedType::Bool)
+            | (UnrefinedType::U8, UnrefinedType::U8) => true,
             (UnrefinedType::Product(left_contents), UnrefinedType::Product(right_contents)) => {
                 left_contents.0 == right_contents.0 && left_contents.1 == right_contents.1
             }

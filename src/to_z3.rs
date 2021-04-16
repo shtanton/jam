@@ -1,7 +1,9 @@
 use crate::semantic::{Identifier, UnrefinedType};
 use crate::smt::{Expression, Function, Smt};
 use crate::syntax::{Constant, Predicate};
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use z3::{
     ast::{forall_const, Ast, Bool, Dynamic, BV},
     Config, Context, DatatypeAccessor, DatatypeBuilder, DatatypeSort, DatatypeVariant, FuncDecl,
@@ -90,6 +92,7 @@ impl<'a> Z3Translater<'a> {
                 let bool_arg = args.pop().ok_or(())?.as_bool().ok_or(())?;
                 bool_arg.not().into()
             }
+            Constant::U8(value) => BV::from_u64(self.ctx, value as u64, 8).into(),
         })
     }
 
