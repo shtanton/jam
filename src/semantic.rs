@@ -131,6 +131,7 @@ impl Expression {
 pub enum UnrefinedType {
     One,
     Bool,
+    U8,
     Product(Box<(UnrefinedType, UnrefinedType)>),
     Function(Box<(UnrefinedType, UnrefinedType)>),
 }
@@ -140,6 +141,7 @@ impl fmt::Display for UnrefinedType {
         match self {
             UnrefinedType::One => write!(fmt, "1")?,
             UnrefinedType::Bool => write!(fmt, "B")?,
+            UnrefinedType::U8 => write!(fmt, "u8")?,
             UnrefinedType::Product(contents) => write!(fmt, "<{}x{}>", contents.0, contents.1)?,
             UnrefinedType::Function(contents) => write!(fmt, "({}->{})", contents.0, contents.1)?,
         }
@@ -176,6 +178,7 @@ pub struct Variable {
 pub enum Type {
     One,
     Bool,
+    U8,
     Product(Identifier, Box<(Type, Type)>),
     Function(Identifier, Box<(Type, Type)>),
     Refinement(Identifier, Box<Type>, Proposition),
@@ -184,7 +187,7 @@ pub enum Type {
 impl Type {
     pub fn substitute(&mut self, expr: &ExpressionKind, id: Identifier) {
         match self {
-            Type::One | Type::Bool => {}
+            Type::One | Type::Bool | Type::U8 => {}
             Type::Product(left_id, contents) => {
                 contents.0.substitute(expr, id);
                 if *left_id != id {
@@ -210,6 +213,7 @@ impl Type {
         match self {
             Type::One => UnrefinedType::One,
             Type::Bool => UnrefinedType::Bool,
+            Type::U8 => UnrefinedType::U8,
             Type::Product(_, contents) => {
                 UnrefinedType::Product(Box::new((contents.0.unrefine(), contents.1.unrefine())))
             }
@@ -385,6 +389,7 @@ impl Analyzer {
         Ok(match typ {
             SType::One => Type::One,
             SType::Bool => Type::Bool,
+            SType::U8 => Type::U8,
             SType::Product(symbol, first, second) => {
                 let first = self.label_type(first, env.clone())?;
                 let id = self.ident_gen.next();

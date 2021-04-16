@@ -3,7 +3,7 @@ use crate::smt::{Expression, Function, Smt};
 use crate::syntax::{Constant, Predicate};
 use std::collections::HashMap;
 use z3::{
-    ast::{forall_const, Ast, Bool, Dynamic},
+    ast::{forall_const, Ast, Bool, Dynamic, BV},
     Config, Context, DatatypeAccessor, DatatypeBuilder, DatatypeSort, DatatypeVariant, FuncDecl,
     SatResult, Solver, Sort as ZSort, Symbol,
 };
@@ -37,6 +37,7 @@ struct Z3Translater<'a> {
     one: ZSort<'a>,
     ast: FuncDecl<'a>,
     bool: ZSort<'a>,
+    u8: ZSort<'a>,
     constants: ConstantDeclarations,
     predicates: PredicateDeclarations,
     variables: HashMap<Identifier, FuncDecl<'a>>,
@@ -106,6 +107,7 @@ impl<'a> Z3Translater<'a> {
         match typ {
             UnrefinedType::One => Some(&self.one),
             UnrefinedType::Bool => Some(&self.bool),
+            UnrefinedType::U8 => Some(&self.u8),
             UnrefinedType::Function(contents) => self.fn_map.get(contents).map(|data| &data.zsort),
             UnrefinedType::Product(contents) => self.pair_map.get(contents).map(|data| &data.zsort),
         }
@@ -245,7 +247,7 @@ impl<'a> Z3Translater<'a> {
         } = smt;
         for typ in types.into_iter() {
             match &typ {
-                UnrefinedType::One | UnrefinedType::Bool => {}
+                UnrefinedType::One | UnrefinedType::Bool | UnrefinedType::U8 => {}
                 UnrefinedType::Function(contents) => {
                     let (param_type, body_type) = &**contents;
                     let symbol = Symbol::String(format!("({}->{})", param_type, body_type));
@@ -326,6 +328,7 @@ pub fn run_smt(smt: Smt) -> Result<SmtResult, ()> {
         &[Symbol::String(String::from("*"))],
     );
     let bool_zsort = ZSort::bool(&ctx);
+    let u8_zsort = ZSort::bitvector(&ctx, 8);
     let constants = ConstantDeclarations {};
     let predicates = PredicateDeclarations {};
     let translater = Z3Translater {
@@ -335,6 +338,7 @@ pub fn run_smt(smt: Smt) -> Result<SmtResult, ()> {
         one,
         ast: ast_vec.pop().unwrap(),
         bool: bool_zsort,
+        u8: u8_zsort,
         constants,
         predicates,
         variables: HashMap::new(),

@@ -131,7 +131,7 @@ impl<'a> ToSmt<'a> {
             return;
         }
         match typ {
-            UnrefinedType::One | UnrefinedType::Bool => {}
+            UnrefinedType::One | UnrefinedType::Bool | UnrefinedType::U8 => {}
             UnrefinedType::Product(contents) | UnrefinedType::Function(contents) => {
                 self.register_type(&contents.0);
                 self.register_type(&contents.1);
@@ -144,6 +144,7 @@ impl<'a> ToSmt<'a> {
         Ok(match typ {
             Type::One => (self.next_id(), UnrefinedType::One, Expression::True),
             Type::Bool => (self.next_id(), UnrefinedType::Bool, Expression::True),
+            Type::U8 => (self.next_id(), UnrefinedType::U8, Expression::True),
             Type::Product(id, contents) => {
                 let tuple_id = self.next_id();
                 let (first_id, first_type, mut first_prop) = self.simplify(contents.0)?;
@@ -340,6 +341,19 @@ impl<'a> ToSmt<'a> {
                             } else {
                                 Expression::False
                             }
+                        } else {
+                            Expression::False
+                        }
+                    }
+                    Type::U8 => {
+                        if let (UnrefinedType::U8, UnrefinedType::U8) = (left_type, right_type) {
+                            Expression::Call(
+                                Function::Equal,
+                                vec![
+                                    self.translate_expression(left)?,
+                                    self.translate_expression(right)?,
+                                ],
+                            )
                         } else {
                             Expression::False
                         }

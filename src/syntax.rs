@@ -14,6 +14,7 @@ use std::fmt;
 pub enum Type {
     One,
     Bool,
+    U8,
     Product(Identifier, Box<Type>, Box<Type>),
     Function(Identifier, Box<Type>, Box<Type>),
     Refinement(Identifier, Box<Type>, Proposition),
@@ -131,6 +132,8 @@ pub enum Expression {
 
 named!(typ_bool(&str) -> Type, map!(tag!("bool"), |_| Type::Bool));
 
+named!(typ_u8(&str) -> Type, map!(tag!("u8"), |_| Type::U8));
+
 named!(typ_one(&str) -> Type, map!(char!('1'), |_| Type::One));
 
 named!(typ_product(&str) -> Type, do_parse!(
@@ -161,7 +164,7 @@ named!(typ_refinement(&str) -> Type, do_parse!(
     (Type::Refinement(id, Box::new(t), prop))
 ));
 
-named!(typ(&str) -> Type, alt!(typ_bool |  typ_product | typ_function | typ_refinement | typ_one));
+named!(typ(&str) -> Type, alt!(typ_bool |  typ_product | typ_function | typ_refinement | typ_one | typ_u8));
 
 fn identifier(input: &str) -> IResult<&str, Identifier> {
     if let Some(c) = input.chars().nth(0) {

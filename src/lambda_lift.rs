@@ -15,6 +15,7 @@ pub struct Judgement {
 pub enum Type {
     One,
     Bool,
+    U8,
     Product(Identifier, Box<(Type, Type)>),
     Function(Identifier, Box<(Type, Type)>),
     Refinement(Identifier, Box<Type>, Proposition),
@@ -25,6 +26,7 @@ impl Type {
         match self {
             Type::One => UnrefinedType::One,
             Type::Bool => UnrefinedType::Bool,
+            Type::U8 => UnrefinedType::U8,
             Type::Product(_, contents) => {
                 UnrefinedType::Product(Box::new((contents.0.unrefine(), contents.1.unrefine())))
             }
@@ -37,7 +39,7 @@ impl Type {
 
     pub fn substitute(&mut self, expr: &Expression, target: Identifier) {
         match self {
-            Type::One | Type::Bool => {}
+            Type::One | Type::Bool | Type::U8 => {}
             Type::Product(_, contents) => {
                 contents.0.substitute(expr, target);
                 contents.1.substitute(expr, target);
@@ -184,6 +186,7 @@ impl<'a> LambdaLifter<'a> {
         match typ {
             UnrefinedType::One => Type::One,
             UnrefinedType::Bool => Type::Bool,
+            UnrefinedType::U8 => Type::U8,
             UnrefinedType::Product(contents) => Type::Product(
                 self.next_id(),
                 Box::new((self.refine_type(&contents.0), self.refine_type(&contents.1))),
@@ -289,6 +292,7 @@ impl<'a> LambdaLifter<'a> {
         match typ {
             SType::One => Type::One,
             SType::Bool => Type::Bool,
+            SType::U8 => Type::U8,
             SType::Product(id, contents) => {
                 let first = self.lift_type(contents.0);
                 let second = self.lift_type(contents.1);
