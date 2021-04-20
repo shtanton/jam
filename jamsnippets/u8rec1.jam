@@ -1,0 +1,7 @@
+(let
+	x: u8 = (10)
+	iter: (fn x:u8, y:y:u8{(= u8 x y)} z:u8{(= u8 z (succ y))})
+		= (fn x:u8, y:y:u8{(= u8 x y)} (succ y))
+	y: y:u8{(= u8 x y)} = (u8rec (0) iter x)
+	in
+	(true))

@@ -93,6 +93,16 @@ impl<'a> Z3Translater<'a> {
                 bool_arg.not().into()
             }
             Constant::U8(value) => BV::from_u64(self.ctx, value as u64, 8).into(),
+            Constant::Succ => {
+                let bv_arg = args.pop().ok_or(())?.as_bv().ok_or(())?;
+                let one = BV::from_u64(self.ctx, 1, 8);
+                bv_arg.bvadd(&one).into()
+            }
+            Constant::Pred => {
+                let bv_arg = args.pop().ok_or(())?.as_bv().ok_or(())?;
+                let one = BV::from_u64(self.ctx, 1, 8);
+                bv_arg.bvsub(&one).into()
+            }
         })
     }
 
@@ -258,7 +268,7 @@ impl<'a> Z3Translater<'a> {
                     let param_zsort = self.get_zsort(param_type).unwrap();
                     let body_zsort = self.get_zsort(body_type).unwrap();
                     let apply =
-                        FuncDecl::new(self.ctx, "apply", &[&zsort, param_zsort], body_zsort);
+                        FuncDecl::new(self.ctx, format!("apply_{}->{}", param_type, body_type), &[&zsort, param_zsort], body_zsort);
                     self.fn_map
                         .insert(*contents.clone(), FnData { zsort, apply });
                 }

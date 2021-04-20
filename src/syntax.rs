@@ -64,6 +64,8 @@ pub enum Constant {
     DblImplies,
     Not,
     U8(u8),
+    Succ,
+    Pred,
 }
 
 impl Constant {
@@ -76,7 +78,7 @@ impl Constant {
             | Constant::Implies
             | Constant::DblImplies
             | Constant::Not => UnrefinedType::Bool,
-            Constant::U8(_) => UnrefinedType::U8,
+            Constant::U8(_) | Constant::Succ | Constant::Pred => UnrefinedType::U8,
         }
     }
 
@@ -98,6 +100,12 @@ impl Constant {
                 }
                 args[0].typ == UnrefinedType::Bool
             }
+            Constant::Succ | Constant::Pred => {
+                if args.len() != 1 {
+                    return false;
+                }
+                args[0].typ == UnrefinedType::U8
+            }
         }
     }
 }
@@ -113,6 +121,8 @@ impl fmt::Display for Constant {
             Constant::DblImplies => write!(fmt, "<=>"),
             Constant::Not => write!(fmt, "not"),
             Constant::U8(v) => write!(fmt, "{}", v),
+            Constant::Succ => write!(fmt, "succ"),
+            Constant::Pred => write!(fmt, "pred"),
         }
     }
 }
@@ -127,6 +137,7 @@ pub enum Expression {
     Application(Box<Expression>, Box<Expression>),
     First(Box<Expression>),
     Second(Box<Expression>),
+    U8Rec(Box<Expression>, Box<Expression>, Box<Expression>),
 }
 
 named!(typ_bool(&str) -> Type, map!(tag!("bool"), |_| Type::Bool));
@@ -263,7 +274,9 @@ named!(constant(&str) -> Constant, alt!(
     map!(tag!("=>"), |_| Constant::Implies) |
     map!(tag!("<=>"), |_| Constant::DblImplies) |
     map!(tag!("not"), |_| Constant::Not) |
-    map!(parse_u8, |v| Constant::U8(v))
+    map!(parse_u8, |v| Constant::U8(v)) |
+    map!(tag!("succ"), |_| Constant::Succ) |
+    map!(tag!("pred"), |_| Constant::Pred)
 ));
 
 named!(expression_variable(&str) -> Expression, map!(identifier, Expression::Variable));
@@ -361,7 +374,17 @@ named!(expression_let(&str) -> Expression, do_parse!(
     })
 ));
 
+named!(expression_u8rec(&str) -> Expression, do_parse!(
+    char!('(') >> ws0 >> tag!("u8rec") >> ws1 >>
+    init: expression >> ws1 >>
+    iter: expression >> ws1 >>
+    count: expression >> ws0 >> char!(')') >>
+    (Expression::U8Rec(Box::new(init), Box::new(iter), Box::new(count)))
+));
+
 named!(expression(&str) -> Expression, alt!(
+    expression_u8rec |
+    expression_let |
     expression_abstraction |
     expression_first |
     expression_second |
@@ -369,8 +392,7 @@ named!(expression(&str) -> Expression, alt!(
     expression_ast |
     expression_application |
     expression_variable |
-    expression_tuple |
-    expression_let
+    expression_tuple
 ));
 
 named!(program(&str) -> Expression, do_parse!(

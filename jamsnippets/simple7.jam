@@ -1,0 +1,5 @@
+(let
+	f: (fn x:u8, y:y:u8{(= u8 x y)} bool)
+		= (fn x:u8, y:y:u8{(= u8 x y)} (true))
+	in
+	(f (10), (10)))

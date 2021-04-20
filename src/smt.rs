@@ -11,6 +11,9 @@ pub struct Smt {
 
 impl fmt::Display for Smt {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        for typ in self.types.iter() {
+            writeln!(fmt, "(declare-sort {})", typ)?;
+        }
         for decl in self.declarations.iter() {
             writeln!(fmt, "(declare-const x!{} {})", decl.id, decl.typ)?;
         }

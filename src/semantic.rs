@@ -4,7 +4,7 @@ use crate::syntax::{
     Constant, Expression as SExpression, Predicate, Proposition as SProposition, Type as SType,
 };
 use crate::to_z3::{run_smt, SmtResult};
-use im::{HashMap as ImHashMap, Vector as ImVec};
+use im::{HashMap as ImHashMap, Vector as ImVec, hashmap as im_hashmap};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -44,31 +44,42 @@ pub enum Proposition {
 }
 
 impl Proposition {
-    pub fn substitute(&mut self, expr: &ExpressionKind, id: Identifier) {
+    pub fn substitute(&mut self, expr: &ExpressionKind, env: &ImHashMap<Identifier, UnrefinedType>, id: Identifier) {
         match self {
             Proposition::False => {}
             Proposition::Implies(contents) => {
-                contents.0.substitute(expr, id);
-                contents.1.substitute(expr, id);
+                contents.0.substitute(expr, env, id);
+                contents.1.substitute(expr, env, id);
             }
             Proposition::Forall(_, contents) => {
-                contents.0.substitute(expr, id);
-                contents.1.substitute(expr, id);
+                contents.0.substitute(expr, env, id);
+                contents.1.substitute(expr, env, id);
             }
             Proposition::Call(_, args) => {
                 args.iter_mut().for_each(|arg| {
-                    arg.substitute(expr, id);
+                    arg.substitute(expr, env, id);
                 });
             }
             Proposition::Equal(contents) => {
-                contents.0.substitute(expr, id);
-                contents.1.substitute(expr, id);
-                contents.2.substitute(expr, id);
+                contents.0.substitute(expr, env, id);
+                contents.1.substitute(expr, env, id);
+                contents.2.substitute(expr, env, id);
             }
             Proposition::Supertype(contents) => {
-                contents.0.substitute(expr, id);
-                contents.1.substitute(expr, id);
+                contents.0.substitute(expr, env, id);
+                contents.1.substitute(expr, env, id);
             }
+        }
+    }
+
+    fn env(&self) -> ImHashMap<Identifier, UnrefinedType> {
+        match self {
+            Proposition::False => ImHashMap::new(),
+            Proposition::Implies(contents) => contents.0.env().union(contents.1.env()),
+            Proposition::Forall(id, contents) => contents.1.env().without(id).union(contents.0.env()),
+            Proposition::Call(_, args) => ImHashMap::unions(args.iter().map(|arg| arg.env.clone())),
+            Proposition::Equal(contents) => contents.0.env().union(contents.1.env.clone()).union(contents.2.env.clone()),
+            Proposition::Supertype(contents) => contents.0.env().union(contents.1.env()),
         }
     }
 }
@@ -83,6 +94,7 @@ pub enum ExpressionKind {
     Application(Box<(Expression, Expression)>),
     First(Box<Expression>),
     Second(Box<Expression>),
+    U8Rec(Identifier, Type, Box<(Expression, Expression, Expression)>),
 }
 
 #[derive(Clone, Debug)]
@@ -93,7 +105,10 @@ pub struct Expression {
 }
 
 impl Expression {
-    pub fn substitute(&mut self, expr: &ExpressionKind, id: Identifier) {
+    pub fn substitute(&mut self, expr: &ExpressionKind, env: &ImHashMap<Identifier, UnrefinedType>, id: Identifier) {
+        if let Some(_) = self.env.remove(&id) {
+            self.env = self.env.clone().union(env.clone());
+        }
         match &mut self.kind {
             ExpressionKind::Ast => {}
             ExpressionKind::Variable(var) => {
@@ -102,27 +117,33 @@ impl Expression {
                 }
             }
             ExpressionKind::Call(_, args) => {
-                args.iter_mut().for_each(|arg| arg.substitute(expr, id));
+                args.iter_mut().for_each(|arg| arg.substitute(expr, env, id));
             }
             ExpressionKind::Tuple(contents) => {
-                contents.0.substitute(expr, id);
-                contents.1.substitute(expr, id);
+                contents.0.substitute(expr, env, id);
+                contents.1.substitute(expr, env, id);
             }
             ExpressionKind::Abstraction(arg_id, arg_type, body) => {
-                arg_type.substitute(expr, id);
+                arg_type.substitute(expr, env, id);
                 if *arg_id != id {
-                    body.substitute(expr, id);
+                    body.substitute(expr, env, id);
                 }
             }
             ExpressionKind::Application(contents) => {
-                contents.0.substitute(expr, id);
-                contents.1.substitute(expr, id);
+                contents.0.substitute(expr, env, id);
+                contents.1.substitute(expr, env, id);
             }
             ExpressionKind::First(arg) => {
-                arg.substitute(expr, id);
+                arg.substitute(expr, env, id);
             }
             ExpressionKind::Second(arg) => {
-                arg.substitute(expr, id);
+                arg.substitute(expr, env, id);
+            }
+            ExpressionKind::U8Rec(_, typ, contents) => {
+                typ.substitute(expr, env, id);
+                contents.0.substitute(expr, env, id);
+                contents.1.substitute(expr, env, id);
+                contents.2.substitute(expr, env, id);
             }
         }
     }
@@ -171,7 +192,7 @@ impl Eq for UnrefinedType {}
 
 #[derive(Clone)]
 pub struct Variable {
-    typ: UnrefinedType,
+    typ: Type,
     id: Identifier,
     symbol: String,
 }
@@ -187,25 +208,25 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn substitute(&mut self, expr: &ExpressionKind, id: Identifier) {
+    pub fn substitute(&mut self, expr: &ExpressionKind, env: &ImHashMap<Identifier, UnrefinedType>, id: Identifier) {
         match self {
             Type::One | Type::Bool | Type::U8 => {}
             Type::Product(left_id, contents) => {
-                contents.0.substitute(expr, id);
+                contents.0.substitute(expr, env, id);
                 if *left_id != id {
-                    contents.1.substitute(expr, id);
+                    contents.1.substitute(expr, env, id);
                 }
             }
             Type::Function(arg_id, contents) => {
-                contents.0.substitute(expr, id);
+                contents.0.substitute(expr, env, id);
                 if *arg_id != id {
-                    contents.1.substitute(expr, id);
+                    contents.1.substitute(expr, env, id);
                 }
             }
             Type::Refinement(arg_id, supertype, prop) => {
-                supertype.substitute(expr, id);
+                supertype.substitute(expr, env, id);
                 if *arg_id != id {
-                    prop.substitute(expr, id);
+                    prop.substitute(expr, env, id);
                 }
             }
         }
@@ -225,6 +246,25 @@ impl Type {
             Type::Refinement(_, supertype, _) => supertype.unrefine(),
         }
     }
+
+    fn env(&self) -> ImHashMap<Identifier, UnrefinedType> {
+        match self {
+            Type::One | Type::Bool | Type::U8 => ImHashMap::new(),
+            Type::Product(id, contents) => {
+                let first_env = contents.0.env();
+                let second_env = contents.1.env();
+                second_env.without(id).union(first_env)
+            },
+            Type::Function(id, contents) => {
+                let param_env = contents.0.env();
+                let body_env = contents.1.env();
+                body_env.without(id).union(param_env)
+            },
+            Type::Refinement(id, supertype, prop) => {
+                prop.env().without(id).union(supertype.env())
+            },
+        }
+    }
 }
 
 pub type Context = ImVec<(Identifier, Type)>;
@@ -235,10 +275,15 @@ pub struct Environment {
     context: Context,
 }
 
+enum Application {
+    U8Rec(Expression, Expression, Expression),
+    UserFunction(Expression, Expression),
+}
+
 fn add_applications_to_vec(
     expr: &Expression,
     mut context: Context,
-    applications: &mut Vec<(Context, Expression, Expression)>,
+    applications: &mut Vec<(Context, Application)>,
 ) {
     match &expr.kind {
         ExpressionKind::Ast => {}
@@ -250,7 +295,10 @@ fn add_applications_to_vec(
         ExpressionKind::Application(contents) => {
             add_applications_to_vec(&contents.0, context.clone(), applications);
             add_applications_to_vec(&contents.1, context.clone(), applications);
-            applications.push((context, contents.0.clone(), contents.1.clone()));
+            applications.push((
+                context,
+                Application::UserFunction(contents.0.clone(), contents.1.clone()),
+            ));
         }
         ExpressionKind::Call(_, args) => {
             args.into_iter().for_each(|arg| {
@@ -267,57 +315,71 @@ fn add_applications_to_vec(
             add_applications_to_vec(&contents.0, context.clone(), applications);
             add_applications_to_vec(&contents.1, context, applications);
         }
+        ExpressionKind::U8Rec(_, _, contents) => {
+            add_applications_to_vec(&contents.0, context.clone(), applications);
+            add_applications_to_vec(&contents.1, context.clone(), applications);
+            add_applications_to_vec(&contents.2, context.clone(), applications);
+            applications.push((
+                context,
+                Application::U8Rec(contents.0.clone(), contents.1.clone(), contents.2.clone()),
+            ));
+        }
     };
 }
 
-fn find_applications(expr: &Expression) -> Vec<(Context, Expression, Expression)> {
+fn find_applications(expr: &Expression) -> Vec<(Context, Application)> {
     let mut applications = Vec::new();
     add_applications_to_vec(expr, ImVec::new(), &mut applications);
     applications
 }
 
+fn arg_type_of_type(typ: &Type, mut args: Vec<Expression>) -> Result<Type, ()> {
+    Ok(match typ {
+        Type::Refinement(_, typ, _) => {
+            arg_type_of_type(typ, args)?
+        },
+        Type::Function(id, contents) => {
+            if let Some(arg) = args.pop() {
+                let mut new_type = contents.1.clone();
+                new_type.substitute(&arg.kind, &arg.env, *id);
+                arg_type_of_type(&new_type, args)?
+            } else {
+                contents.0.clone()
+            }
+        },
+        _ => return Err(()),
+    })
+}
+
 fn arg_type(
     expr: &Expression,
-    mut context: Context,
-    mut args: ImVec<Expression>,
+    mut context: HashMap<Identifier, Type>,
+    mut args: Vec<Expression>,
 ) -> Result<Type, ()> {
     Ok(match &expr.kind {
         ExpressionKind::Abstraction(id, typ, body) => {
-            if let Some(arg) = args.pop_back() {
+            if let Some(arg) = args.pop() {
                 let mut body = body.clone();
-                body.substitute(&arg.kind, *id);
+                body.substitute(&arg.kind, &arg.env, *id);
                 arg_type(&body, context, args)?
             } else {
                 typ.clone()
             }
         }
         ExpressionKind::Application(contents) => {
-            args.push_back(contents.1.clone());
+            args.push(contents.1.clone());
             arg_type(&contents.0, context, args)?
         }
         ExpressionKind::Variable(id) => {
-            let (i, (_, var_type)) = context
-                .iter_mut()
-                .enumerate()
-                .rfind(|(_, (el_id, _))| *el_id == *id)
-                .ok_or(())?;
-            match &var_type {
-                Type::Refinement(_, typ, _) => {
-                    *var_type = *typ.clone();
-                    arg_type(expr, context, args)?
-                }
-                Type::Function(arg_id, contents) => {
-                    if let Some(arg) = args.pop_back() {
-                        let mut var_type = var_type.clone();
-                        var_type.substitute(&arg.kind, *arg_id);
-                        context.set(i, (*id, var_type.clone()));
-                        arg_type(expr, context, args)?
-                    } else {
-                        contents.0.clone()
-                    }
-                }
-                _ => return Err(()),
-            }
+            let var_type = context.get(id).ok_or(())?;
+            arg_type_of_type(var_type, args.into())?
+        }
+        ExpressionKind::U8Rec(id, typ, contents) => {
+            let mut typ = typ.clone();
+            typ.substitute(&contents.2.kind, &contents.2.env, *id);
+            let res = arg_type_of_type(&typ, args)?;
+            context.insert(*id, typ);
+            res
         }
         _ => return Err(()),
     })
@@ -360,7 +422,7 @@ impl Analyzer {
                 self.symbol_table.insert(
                     id,
                     Variable {
-                        typ: typ.unrefine(),
+                        typ: typ.clone(),
                         id: id,
                         symbol: symbol.clone(),
                     },
@@ -401,7 +463,7 @@ impl Analyzer {
                     Variable {
                         id: id,
                         symbol: symbol.clone(),
-                        typ: first.unrefine(),
+                        typ: first.clone(),
                     },
                 );
                 let second = self.label_type(second, env)?;
@@ -416,7 +478,7 @@ impl Analyzer {
                     Variable {
                         id: id,
                         symbol: symbol.clone(),
-                        typ: param.unrefine(),
+                        typ: param.clone(),
                     },
                 );
                 let ret = self.label_type(ret, env)?;
@@ -431,7 +493,7 @@ impl Analyzer {
                     Variable {
                         id: id,
                         symbol: symbol.clone(),
-                        typ: supertype.unrefine(),
+                        typ: supertype.clone(),
                     },
                 );
                 let prop = self.label_proposition(prop, env)?;
@@ -454,6 +516,7 @@ impl Analyzer {
             },
             SExpression::Abstraction(param_symbol, param_type, expr) => {
                 let param_type = self.label_type(param_type, env.clone())?;
+                let unrefined_arg_type = param_type.unrefine();
                 let id = self.ident_gen.next();
                 env.insert(param_symbol.clone(), id);
                 self.symbol_table.insert(
@@ -461,14 +524,13 @@ impl Analyzer {
                     Variable {
                         id,
                         symbol: param_symbol.clone(),
-                        typ: param_type.unrefine(),
+                        typ: param_type.clone(),
                     },
                 );
                 let body = self.label_expression(expr, env)?;
-                let unrefined_arg_type = param_type.unrefine();
                 let body_typ = body.typ.clone();
                 Expression {
-                    env: body.env.without(&id),
+                    env: body.env.without(&id).union(param_type.env()),
                     kind: ExpressionKind::Abstraction(id, param_type, Box::new(body)),
                     typ: UnrefinedType::Function(Box::new((unrefined_arg_type, body_typ))),
                 }
@@ -537,14 +599,39 @@ impl Analyzer {
                     typ,
                 }
             }
+            SExpression::U8Rec(init, iter, count) => {
+                let count = self.label_expression(count, env.clone())?;
+                if let UnrefinedType::U8 = &count.typ {
+                    let init = self.label_expression(init, env.clone())?;
+                    let iter = self.label_expression(iter, env.clone())?;
+                    let n_id = self.ident_gen.next();
+                    let n = Expression {
+                        kind: ExpressionKind::Variable(n_id),
+                        env: ImHashMap::new().update(n_id, UnrefinedType::U8),
+                        typ: UnrefinedType::U8,
+                    };
+                    let typ = arg_type(&iter, self.symbol_table.clone().into_iter().map(|(id, var)| (id, var.typ)).collect(), vec![n])?;
+                    Expression {
+                        env: init
+                            .env
+                            .clone()
+                            .union(iter.env.clone())
+                            .union(count.env.clone()),
+                        typ: init.typ.clone(),
+                        kind: ExpressionKind::U8Rec(n_id, typ, Box::new((init, iter, count))),
+                    }
+                } else {
+                    return Err(());
+                }
+            }
             SExpression::Variable(symbol) => {
                 let id = env.get(symbol).ok_or(())?;
                 let variable = self.symbol_table.get(id).ok_or(())?;
                 let mut var_env = ImHashMap::new();
-                var_env.insert(*id, variable.typ.clone());
+                var_env.insert(*id, variable.typ.unrefine());
                 Expression {
                     kind: ExpressionKind::Variable(*id),
-                    typ: variable.typ.clone(),
+                    typ: variable.typ.unrefine(),
                     env: var_env,
                 }
             }
@@ -561,13 +648,59 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
     let applications = find_applications(&ast);
     let mut judgements = applications
         .into_iter()
-        .map(|(context, fun, arg)| {
-            let typ = arg_type(&fun, context.clone(), ImVec::default())?;
-            Ok(Judgement {
-                context: context.into_iter().collect(),
-                expression: arg,
-                typ,
-            })
+        .flat_map(|(context, application)| match application {
+            Application::UserFunction(fun, arg) => {
+                if let Ok(typ) = arg_type(&fun, context.clone().into_iter().collect(), Vec::new()) {
+                    vec![Ok(Judgement {
+                        context: context.into_iter().collect(),
+                        expression: arg,
+                        typ,
+                    })]
+                } else {
+                    vec![Err(())]
+                }
+            }
+            Application::U8Rec(init, iter, _) => {
+                let n = analyzer.ident_gen.next();
+                let var_n = Expression {
+                    kind: ExpressionKind::Variable(n),
+                    env: ImHashMap::new().update(n, UnrefinedType::U8),
+                    typ: UnrefinedType::U8,
+                };
+                if let Ok(type_n) = arg_type(&iter, context.clone().into_iter().collect(), vec![var_n.clone()]) {
+                    let mut type_succ_n = type_n.clone();
+                    type_succ_n.substitute(
+                        &ExpressionKind::Call(Constant::Succ, vec![var_n.clone()]),
+                        &var_n.env,
+                        n,
+                    );
+                    let mut type_zero = type_n.clone();
+                    type_zero.substitute(&ExpressionKind::Call(Constant::U8(0), Vec::new()), &ImHashMap::new(), n);
+                    vec![
+                        Ok(Judgement {
+                            context: context.clone().into_iter().collect(),
+                            expression: init,
+                            typ: type_zero,
+                        }),
+                        Ok(Judgement {
+                            context: context.into_iter().collect(),
+                            expression: iter,
+                            typ: Type::Function(
+                                n,
+                                Box::new((
+                                    Type::U8,
+                                    Type::Function(
+                                        analyzer.ident_gen.next(),
+                                        Box::new((type_n, type_succ_n)),
+                                    ),
+                                )),
+                            ),
+                        }),
+                    ]
+                } else {
+                    vec![Err(())]
+                }
+            }
         })
         .collect::<Result<Vec<_>, ()>>()
         .map_err(|_| "error generating typing judgements".to_string())?;
@@ -594,6 +727,7 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
             }
             _ => {
                 println!("FAIL");
+                return Err("Type error".to_string());
             }
         }
     }
