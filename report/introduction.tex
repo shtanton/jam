@@ -1,0 +1,177 @@
+\section{Introduction}
+
+My project is a compiler for a language with runtime semantics much like Haskell,
+but the typing semantics are from a lambda calculus defined by Denney \cite{denney98}.
+Since functional programming languages are nothing new and my language does nothing new
+at runtime compared to Haskell, I will focus on the type system of my language which is
+what makes it interesting.
+
+\subsection{What Are Refinement Types?}
+
+A recent trend for programming languages has been improving the compiler's ability to find
+bugs in programs at compile time and so improve the robustness of compiled code.
+Building formal verification tools into compilers can be done in many ways, but the method
+I've chosen to explore is using \textit{refinement types}.
+In any programming language, a type can be considered to be a set of all the possible values
+that a variable of that type could have, for example, the boolean type could be considered
+as the set $\{true, false\}$.
+Refinement types allow the programmer to add \textit{refinements} to these types which
+filter the set using a predicate.
+Using Denney's syntax for a refinement type, the type
+$(x:nat)x<5$ corresponds to the set $\{x \in nat | x < 5\}$ which is equivalent to
+$\{0, 1, 2, 3, 4\}$.
+As I'll explain later, the language strongly resembles the $\lambda^{\times \rightarrow}$ calculus
+with simple types, so it is easy to see that any term can be fully $\beta$ and $\eta$ reduced to
+arrive at a value for the term.
+If, in a given context, every possible value a term can take is in the set of values corresponding to
+a type, then the term can have that type.
+
+\subsection{Why Are Refinement Types Useful?}
+
+A crucial part of any software is reliability and robustness.
+Currently, the most widely used strategy for ensuring that software works as it should
+is to run automated tests.
+As Edsger W. Dijkstra said, "Program testing can be used to show the presence of bugs,
+but never their absence!".
+This shows a flaw with running tests, they cannot possibly check every possible set of inputs
+to the program, so cannot give any guaruntees outside of the test cases that are checked.
+If there is an edge case for which a function doesn't perform correctly which is overlooked
+and so not tested, it can easily make it into production where, depending on where it is
+deployed, it could have disasterous consequences.
+Formal verification can prove properties formally for every possible sequence of inputs.
+This solves the problem of missing certain edge cases, but doesn't solve the problem of
+needing to provide the correct property to check.
+Frequently the property that is being checked matches the implementation, for example,
+a successor function $succ$ would have a type like $\Pi_{x:nat} (y:nat) y =_{nat} x+1$
+and an implementation like $\lambda x:nat . x+1$.
+Clearly the refinement type isn't adding any value here,
+but there are classes of problems for which refinement types are very useful.
+
+The first is a problem where verifying a correct solution is much easier than finding
+the solution.
+Denney uses the example of $div2$ which divides a natural number by 2, rounding down.
+Finding the solution to $div2\ n$ involves iterating $n$ times and alternately incrementing
+2 counters, which is far more complex than doubling the result and seeing if it is $n$ or
+$n-1$.
+\begin{quote}
+    If verifying a result is simpler than computing a result then refinement types can prove that
+    every result can be verified.
+\end{quote}
+
+The second is a problem where there are 2 algorithms which could be used to compute a value.
+One has preferable runtime characteristics (such as better time or space complexity), while
+the other is easier to prove by hand.
+Refinement types allow the programmer to implement both, then have the compiler check they are
+equivalent to prove that the more useful implementation also functions correctly.
+Suppose we want to check if a natural number, $n$, is even.
+We already have a $div2$ function which we know works, so we could run it, then double the
+result and compare it to $n$.
+It is easy to prove that $n$ is even iff double $div2\ n$ is equal to $n$, but this algorithm
+is very convoluted, and doing this much work is unnecessary.
+Instead we could opt for another, simpler algorithm, and have the compiler prove that it functions
+identically to the first algorithm.
+The compiler would prove this every time it is run, so if we change our implementation later on,
+we don't need to worry that we've broken something.
+\begin{quote}
+    If it is hard to prove an efficient algorithm works, prove an inefficient algorithm and let the
+    compiler prove they're equivalent.
+\end{quote}
+
+There may be other cases for which refinement types can be particularly useful, but at least in
+these 2 instances, a refinement typed language can give much more confidence than testing ever
+could.
+
+\begin{itshape}
+    I'll add an example of the type checker finding a non-obvious bug in some code here once the
+    type checker is more capable.
+\end{itshape}
+
+\subsection{My Language}
+
+My language is based on Denney's calculus, with only a few changes.
+I leave out one of Denney's typing rules ($\lambda$-$\beta$-EQ) as it is hard for an SMT solver to reason with and
+the same expressiveness can be achieved without it by choosing a more restrictive $\phi$.
+I also define the sets of ground types (Table \ref{tab:ground_types}), constants (Table \ref{tab:constants}),
+predicates (Table \ref{tab:predicates}) and axioms (Figure \ref{fig:axiom_schemas}) that Denney uses in his
+calculus.
+My implementation of $u8rec$ is based on Denney's for $natrec$ but I leave out 2 typing rules as Z3 isn't
+capable of inductive reasoning which is required to allow it to work with them.
+Fortunately, again by carefully selecting the type guard on the iterator function argument to $u8rec$,
+we don't lose expressiveness without these axioms, but we essentially force the programmer to specify the
+induction so it can be abstracted out before the SMT solver is run.
+
+\begin{table}
+    \centering
+    \begin{tabular}{|l|l|}
+        \cline{1-2}
+        $bool$ & Booleans\\\cline{1-2}
+        $u8$ & Unsigned 8 bit integers\\\cline{1-2}
+    \end{tabular}
+    \caption{Ground Types}
+    \label{tab:ground_types}
+\end{table}
+
+\begin{table}
+    \centering
+    \begin{tabular}{|l|l|p{0.508\textwidth}|}
+        \cline{1-3}
+        $true$, $false$ & $bool$ & Literals for the booleans.\\\cline{1-3}
+        $\land$, $\lor$, $\Rightarrow$, $\Leftrightarrow$ & $bool, bool \rightarrow bool$ & Standard binary boolean operators.\\\cline{1-3}
+        $\lnot$ & $bool \rightarrow bool$ & Unary not.\\\cline{1-3}
+        $0$, ..., $255$ & $u8$ & Literals for the 8 bit unsigned integers.\\\cline{1-3}
+        $succ$, $pred$ & $u8 \rightarrow u8$ & The successor and predecessor of a $u8$, which will over/underflow.\\\cline{1-3}
+        $+$, $-$ & $u8, u8 \rightarrow u8$ & Addition and subtraction for $u8$, which will over/underflow.\\\cline{1-3}
+        $u8rec$ & $\tau, (u8 \rightarrow \tau \rightarrow \tau), u8 \rightarrow \tau$ &
+        Iterate over the $u8$s less than a given $u8$ in ascending order.\newline
+        $u8rec\ t\ t'\ 0 \coloneqq t$ \newline
+        $u8rec\ t\ t'\ succ(n) \coloneqq t'\ n\ (u8rec\ t\ t'\ n)$\\\cline{1-3}
+    \end{tabular}
+    \caption{Constants}
+    \label{tab:constants}
+\end{table}
+
+\begin{table}
+    \centering
+    \begin{tabular}{|l|l|l|}
+        \cline{1-3}
+        $bool$ & $bool$ & Interpret a boolean expression as a proposition.\\\cline{1-3}
+        $\textgreater$, $\textless$, $\leq$, $\geq$ & $u8, u8$ & Integer inequalities.\\\cline{1-3}
+    \end{tabular}
+    \caption{Predicates}
+    \label{tab:predicates}
+\end{table}
+
+\begin{figure}
+    \centering
+    \begin{prooftree}
+        \hypo{\Gamma \vdash n: u8}
+        \hypo{\Gamma \vdash t: \phi[0]}
+        \hypo{\Gamma \vdash t': \Pi_{n:nat} \Pi_{y:\phi[n]} \phi[succ(n)]}
+        \infer3[(U8REC)]{\Gamma \vdash u8rec\ t\ t'\ n: \phi[n]}
+    \end{prooftree}
+    \caption{Axiom Schemas}
+    \label{fig:axiom_schemas}
+\end{figure}
+
+I have also added some syntactic sugar to make programming in the language easier.
+
+\begin{center}
+    $\lambda x_1: \phi_1, ..., x_n: \phi_n . t \coloneqq \lambda x_1: \phi_1 .\ ...\ \lambda x_n: \phi_n . t$
+
+    $f\ t_1,\ ...,\ t_n \coloneqq (...(f\ t_1)\ ...)\ t_n$
+
+    $let\ x_1: \phi_1 = t_1, ..., x_n: \phi_n = t_n\ in\ u \coloneqq (\lambda x_1: \phi_1 .\ ...(\lambda x_n: \phi_n . u)\ t_n...)\ t_1$
+\end{center}
+
+I define my language's operational semantics in line with that of the $\lambda^{\times \rightarrow}$ calculus.
+
+\begin{center}
+    $(\lambda x: \phi . t) t' \rightarrow_\beta t[t'/x]$
+
+    $\pi_i(\langle t_1, t_2 \rangle) \rightarrow_\beta t_i$
+\end{center}
+
+For the type checking, a definition of first order logic is also necessary, and Denney includes this
+in his calculus.
+I won't repeat it here but the one new type of proposition is $\phi \sqsubseteq \psi$ which means that
+$\phi$ is a supertype of $\psi$.

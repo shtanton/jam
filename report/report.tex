@@ -1,0 +1,40 @@
+\documentclass[12pt,a4paper,titlepage]{article}
+\usepackage{mathtools}
+\usepackage{stmaryrd}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{array}
+\usepackage[margin=1in]{geometry}
+\usepackage{ebproof}
+\usepackage{alltt}
+
+\title{Project Report}
+\author{Charlie Stanton}
+
+\begin{document}
+    \maketitle
+
+    \include{introduction}
+
+    \section{How The Type Checker Works}
+    I haven't written these chapters yet.
+    I just have some notes for when I do.
+    The chapters each focus on an aspect of development, but overlap chronologically, should I change
+    them to tell the story in chronological order.
+    \section{Other Approaches To Refinement Type Checking That Don't Work}
+    \begin{itemize}
+        \item Syntax led type checking using Denney's typing rules.
+        \item Defunctionalization
+        \item Implementing u8rec in Z3
+    \end{itemize}
+    \section{Interesting Technologies Used}
+    \begin{itemize}
+        \item Rust
+        \item Z3
+        \item LLVM
+    \end{itemize}
+    \section{Conclusion?}
+
+    \bibliographystyle{abbrv}
+    \bibliography{sources}
+\end{document}
