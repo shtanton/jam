@@ -3,7 +3,7 @@ use crate::semantic::{
     Judgement as SJudgement, Proposition as SProposition, Type as SType, UnrefinedType,
 };
 use crate::syntax::{Constant, Predicate};
-use im::{vector::Vector as ImVec};
+use im::vector::Vector as ImVec;
 
 #[derive(Debug)]
 pub struct Judgement {
@@ -203,13 +203,7 @@ impl<'a> LambdaLifter<'a> {
         match expr.kind {
             SExpressionKind::U8Rec(id, iter_type, contents) => {
                 let iter_type = self.lift_type(iter_type);
-                let typ = Type::Function(
-                    id,
-                    Box::new((
-                        Type::U8,
-                        iter_type,
-                    )),
-                );
+                let typ = Type::Function(id, Box::new((Type::U8, iter_type)));
                 let count = self.lift_expression(contents.2);
                 let var = self.next_id();
                 let expr = Expression::Application(Box::new((
@@ -218,7 +212,7 @@ impl<'a> LambdaLifter<'a> {
                 )));
                 self.context.push((var, typ));
                 expr
-            },
+            }
             SExpressionKind::Abstraction(param, param_type, body) => {
                 let environment: Vec<_> = expr.env.into_iter().collect();
                 let new_fn = self.next_id();

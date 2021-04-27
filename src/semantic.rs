@@ -4,7 +4,7 @@ use crate::syntax::{
     Constant, Expression as SExpression, Predicate, Proposition as SProposition, Type as SType,
 };
 use crate::to_z3::{run_smt, SmtResult};
-use im::{HashMap as ImHashMap, Vector as ImVec, hashmap as im_hashmap};
+use im::{hashmap as im_hashmap, HashMap as ImHashMap, Vector as ImVec};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -44,7 +44,12 @@ pub enum Proposition {
 }
 
 impl Proposition {
-    pub fn substitute(&mut self, expr: &ExpressionKind, env: &ImHashMap<Identifier, UnrefinedType>, id: Identifier) {
+    pub fn substitute(
+        &mut self,
+        expr: &ExpressionKind,
+        env: &ImHashMap<Identifier, UnrefinedType>,
+        id: Identifier,
+    ) {
         match self {
             Proposition::False => {}
             Proposition::Implies(contents) => {
@@ -76,9 +81,15 @@ impl Proposition {
         match self {
             Proposition::False => ImHashMap::new(),
             Proposition::Implies(contents) => contents.0.env().union(contents.1.env()),
-            Proposition::Forall(id, contents) => contents.1.env().without(id).union(contents.0.env()),
+            Proposition::Forall(id, contents) => {
+                contents.1.env().without(id).union(contents.0.env())
+            }
             Proposition::Call(_, args) => ImHashMap::unions(args.iter().map(|arg| arg.env.clone())),
-            Proposition::Equal(contents) => contents.0.env().union(contents.1.env.clone()).union(contents.2.env.clone()),
+            Proposition::Equal(contents) => contents
+                .0
+                .env()
+                .union(contents.1.env.clone())
+                .union(contents.2.env.clone()),
             Proposition::Supertype(contents) => contents.0.env().union(contents.1.env()),
         }
     }
@@ -105,7 +116,12 @@ pub struct Expression {
 }
 
 impl Expression {
-    pub fn substitute(&mut self, expr: &ExpressionKind, env: &ImHashMap<Identifier, UnrefinedType>, id: Identifier) {
+    pub fn substitute(
+        &mut self,
+        expr: &ExpressionKind,
+        env: &ImHashMap<Identifier, UnrefinedType>,
+        id: Identifier,
+    ) {
         if let Some(_) = self.env.remove(&id) {
             self.env = self.env.clone().union(env.clone());
         }
@@ -117,7 +133,8 @@ impl Expression {
                 }
             }
             ExpressionKind::Call(_, args) => {
-                args.iter_mut().for_each(|arg| arg.substitute(expr, env, id));
+                args.iter_mut()
+                    .for_each(|arg| arg.substitute(expr, env, id));
             }
             ExpressionKind::Tuple(contents) => {
                 contents.0.substitute(expr, env, id);
@@ -208,7 +225,12 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn substitute(&mut self, expr: &ExpressionKind, env: &ImHashMap<Identifier, UnrefinedType>, id: Identifier) {
+    pub fn substitute(
+        &mut self,
+        expr: &ExpressionKind,
+        env: &ImHashMap<Identifier, UnrefinedType>,
+        id: Identifier,
+    ) {
         match self {
             Type::One | Type::Bool | Type::U8 => {}
             Type::Product(left_id, contents) => {
@@ -254,15 +276,13 @@ impl Type {
                 let first_env = contents.0.env();
                 let second_env = contents.1.env();
                 second_env.without(id).union(first_env)
-            },
+            }
             Type::Function(id, contents) => {
                 let param_env = contents.0.env();
                 let body_env = contents.1.env();
                 body_env.without(id).union(param_env)
-            },
-            Type::Refinement(id, supertype, prop) => {
-                prop.env().without(id).union(supertype.env())
-            },
+            }
+            Type::Refinement(id, supertype, prop) => prop.env().without(id).union(supertype.env()),
         }
     }
 }
@@ -336,40 +356,30 @@ fn find_applications(expr: &Expression) -> Vec<(Context, Application)> {
 /// Assuming variable expr_id of type typ is operated on with args, what is the param type?
 fn arg_type_of_type(typ: &Type, mut args: Vec<FnProcess>) -> Result<Type, ()> {
     Ok(match typ {
-        Type::Refinement(_, typ, _) => {
-            arg_type_of_type(typ, args)?
-        },
-        Type::Function(id, contents) => {
-            match args.pop() {
-                Some(FnProcess::Arg(arg)) => {
-                    let mut new_type = contents.1.clone();
-                    new_type.substitute(&arg.kind, &arg.env, *id);
-                    arg_type_of_type(&new_type, args)?
-                }
-                None => {
-                    contents.0.clone()
-                }
-                Some(FnProcess::First) | Some(FnProcess::Second(_)) => {
-                    return Err(());
-                }
+        Type::Refinement(_, typ, _) => arg_type_of_type(typ, args)?,
+        Type::Function(id, contents) => match args.pop() {
+            Some(FnProcess::Arg(arg)) => {
+                let mut new_type = contents.1.clone();
+                new_type.substitute(&arg.kind, &arg.env, *id);
+                arg_type_of_type(&new_type, args)?
+            }
+            None => contents.0.clone(),
+            Some(FnProcess::First) | Some(FnProcess::Second(_)) => {
+                return Err(());
             }
         },
-        Type::Product(id, contents) => {
-            match args.pop() {
-                Some(FnProcess::First) => {
-                    arg_type_of_type(&contents.0, args)?
-                }
-                Some(FnProcess::Second(arg)) => {
-                    let mut typ = arg_type_of_type(&contents.1, args)?;
-                    let env = arg.env.clone();
-                    typ.substitute(&ExpressionKind::First(Box::new(arg)), &env, *id);
-                    typ
-                }
-                Some(FnProcess::Arg(_)) | None => {
-                    return Err(());
-                }
+        Type::Product(id, contents) => match args.pop() {
+            Some(FnProcess::First) => arg_type_of_type(&contents.0, args)?,
+            Some(FnProcess::Second(arg)) => {
+                let mut typ = arg_type_of_type(&contents.1, args)?;
+                let env = arg.env.clone();
+                typ.substitute(&ExpressionKind::First(Box::new(arg)), &env, *id);
+                typ
             }
-        }
+            Some(FnProcess::Arg(_)) | None => {
+                return Err(());
+            }
+        },
         Type::Bool | Type::One | Type::U8 => return Err(()),
     })
 }
@@ -386,21 +396,17 @@ fn arg_type(
     mut args: Vec<FnProcess>,
 ) -> Result<Type, ()> {
     Ok(match &expr.kind {
-        ExpressionKind::Abstraction(id, typ, body) => {
-            match args.pop() {
-                Some(FnProcess::Arg(arg)) => {
-                    let mut body = body.clone();
-                    body.substitute(&arg.kind, &arg.env, *id);
-                    arg_type(&body, context, args)?
-                },
-                Some(_) => {
-                    return Err(());
-                },
-                None => {
-                    typ.clone()
-                }
+        ExpressionKind::Abstraction(id, typ, body) => match args.pop() {
+            Some(FnProcess::Arg(arg)) => {
+                let mut body = body.clone();
+                body.substitute(&arg.kind, &arg.env, *id);
+                arg_type(&body, context, args)?
             }
-        }
+            Some(_) => {
+                return Err(());
+            }
+            None => typ.clone(),
+        },
         ExpressionKind::Application(contents) => {
             args.push(FnProcess::Arg(contents.1.clone()));
             arg_type(&contents.0, context, args)?
@@ -424,19 +430,13 @@ fn arg_type(
             args.push(FnProcess::Second(*arg.clone()));
             arg_type(&arg, context, args)?
         }
-        ExpressionKind::Tuple(contents) => {
-            match args.pop() {
-                Some(FnProcess::First) => {
-                    arg_type(&contents.0, context, args)?
-                }
-                Some(FnProcess::Second(_)) => {
-                    arg_type(&contents.1, context, args)?
-                }
-                None | Some(FnProcess::Arg(_)) => {
-                    return Err(());
-                }
+        ExpressionKind::Tuple(contents) => match args.pop() {
+            Some(FnProcess::First) => arg_type(&contents.0, context, args)?,
+            Some(FnProcess::Second(_)) => arg_type(&contents.1, context, args)?,
+            None | Some(FnProcess::Arg(_)) => {
+                return Err(());
             }
-        }
+        },
         ExpressionKind::Ast | ExpressionKind::Call(_, _) => return Err(()),
     })
 }
@@ -666,7 +666,15 @@ impl Analyzer {
                         env: ImHashMap::new().update(n_id, UnrefinedType::U8),
                         typ: UnrefinedType::U8,
                     };
-                    let typ = arg_type(&iter, self.symbol_table.clone().into_iter().map(|(id, var)| (id, var.typ)).collect(), vec![FnProcess::Arg(n)])?;
+                    let typ = arg_type(
+                        &iter,
+                        self.symbol_table
+                            .clone()
+                            .into_iter()
+                            .map(|(id, var)| (id, var.typ))
+                            .collect(),
+                        vec![FnProcess::Arg(n)],
+                    )?;
                     Expression {
                         env: init
                             .env
@@ -701,8 +709,11 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
     let ast = analyzer
         .label_expression(&ast, env)
         .map_err(|_| "labelling error".to_string())?;
+    if ast.typ != UnrefinedType::U8 {
+        return Err("labelling error".to_string());
+    }
     let applications = find_applications(&ast);
-    let mut judgements = applications
+    let judgements = applications
         .into_iter()
         .flat_map(|(context, application)| match application {
             Application::UserFunction(fun, arg) => {
@@ -723,7 +734,11 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
                     env: ImHashMap::new().update(n, UnrefinedType::U8),
                     typ: UnrefinedType::U8,
                 };
-                if let Ok(type_n) = arg_type(&iter, context.clone().into_iter().collect(), vec![FnProcess::Arg(var_n.clone())]) {
+                if let Ok(type_n) = arg_type(
+                    &iter,
+                    context.clone().into_iter().collect(),
+                    vec![FnProcess::Arg(var_n.clone())],
+                ) {
                     let mut type_succ_n = type_n.clone();
                     type_succ_n.substitute(
                         &ExpressionKind::Call(Constant::Succ, vec![var_n.clone()]),
@@ -731,7 +746,11 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
                         n,
                     );
                     let mut type_zero = type_n.clone();
-                    type_zero.substitute(&ExpressionKind::Call(Constant::U8(0), Vec::new()), &ImHashMap::new(), n);
+                    type_zero.substitute(
+                        &ExpressionKind::Call(Constant::U8(0), Vec::new()),
+                        &ImHashMap::new(),
+                        n,
+                    );
                     vec![
                         Ok(Judgement {
                             context: context.clone().into_iter().collect(),
@@ -760,11 +779,6 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
         })
         .collect::<Result<Vec<_>, ()>>()
         .map_err(|_| "error generating typing judgements".to_string())?;
-    judgements.push(Judgement {
-        context: Vec::new(),
-        expression: ast.clone(),
-        typ: Type::Bool,
-    });
     let judgements = judgements
         .into_iter()
         .map(|judgement| lift(judgement, &mut analyzer.ident_gen))
