@@ -31,13 +31,18 @@ a type, then the term can have that type.
 A crucial part of any software is reliability and robustness.
 Currently, the most widely used strategy for ensuring that software works as it should
 is to run automated tests.
-As Edsger W. Dijkstra said, "Program testing can be used to show the presence of bugs,
-but never their absence!".
+Edsger W. Dijkstra said \cite{dijkstra72}
+\begin{quote}
+    program testing can be a very effective way to show the presence of bugs, but is
+    hopelessly inadequate for showing their absence.
+    The only effective way to raise the confidence level of a program significantly is
+    to give a convincing proof of its correctness.
+\end{quote}
 This shows a flaw with running tests, they cannot possibly check every possible set of inputs
 to the program, so cannot give any guaruntees outside of the test cases that are checked.
 If there is an edge case for which a function doesn't perform correctly which is overlooked
 and so not tested, it can easily make it into production where, depending on where it is
-deployed, it could have disasterous consequences.
+deployed, it could have disastrous consequences.
 Formal verification can prove properties formally for every possible sequence of inputs.
 This solves the problem of missing certain edge cases, but doesn't solve the problem of
 needing to provide the correct property to check.
@@ -66,7 +71,7 @@ equivalent to prove that the more useful implementation also functions correctly
 Suppose we want to check if a natural number, $n$, is even.
 We already have a $div2$ function which we know works, so we could run it, then double the
 result and compare it to $n$.
-It is easy to prove that $n$ is even iff double $div2\ n$ is equal to $n$, but this algorithm
+It is easy to prove that $n$ is even iff $double\ (div2\ n)$ is equal to $n$, but this algorithm
 is very convoluted, and doing this much work is unnecessary.
 Instead we could opt for another, simpler algorithm, and have the compiler prove that it functions
 identically to the first algorithm.
@@ -88,77 +93,83 @@ could.
 
 \subsection{My Language}
 
-My language is based on Denney's calculus, with only a few changes.
-I leave out one of Denney's typing rules ($\lambda$-$\beta$-EQ) as it is hard for an SMT solver to reason with and
-the same expressiveness can be achieved without it by choosing a more restrictive $\phi$.
-I also define the sets of ground types (Table \ref{tab:ground_types}), constants (Table \ref{tab:constants}),
-predicates (Table \ref{tab:predicates}) and axioms (Figure \ref{fig:axiom_schemas}) that Denney uses in his
-calculus.
-My implementation of $u8rec$ is based on Denney's for $natrec$ but I leave out 2 typing rules as Z3 isn't
-capable of inductive reasoning which is required to allow it to work with them.
-Fortunately, again by carefully selecting the type guard on the iterator function argument to $u8rec$,
-we don't lose expressiveness without these axioms, but we essentially force the programmer to specify the
-induction so it can be abstracted out before the SMT solver is run.
+My language is based on Denney's calculus, with a few changes.
+Denney's calculus has 5 types, as does mine.
 
-\begin{table}
-    \centering
-    \begin{tabular}{|l|l|}
-        \cline{1-2}
-        $bool$ & Booleans\\\cline{1-2}
-        $u8$ & Unsigned 8 bit integers\\\cline{1-2}
-    \end{tabular}
-    \caption{Ground Types}
-    \label{tab:ground_types}
-\end{table}
+\begin{tabular}{r|p{0.8\textwidth}}
+    \textbf{1} &
+    The unit type, a term of type \textbf{1} must have the value $\ast$.\\\cline{1-2}
+    $\gamma$ &
+    A ground type, my language has 2 as listed in \ref{tab:ground_types}\\\cline{1-2}
+    $\Sigma_{x:\phi} \psi$ &
+    A pair of values (2-tuple).
+    The first has type $\phi$ and the second has type $\psi$.
+    Contrary to the $\lambda^{\times \rightarrow}$ calculus, the type of the second value
+    can be dependent on the first value.
+    For example a tuple of 2 numbers could be restricted so the second is equal to the first with
+    the type
+    $\Sigma_{x: u8} (y: u8) x =_{u8} y$.
+    We refer to the ability for a type to depend on a value as \textit{dependent typing}\\\cline{1-2}
+    $\Pi_{x:\phi} \psi$ &
+    A function from $\phi$ to $\psi$.
+    These are also dependently typed, the type of the return value can be restricted based on the
+    value of the argument.
+    Any argument used to call the function should have type $\phi$, this is how we impose
+    \textit{type guarding}.\\\cline{1-2}
+    $(x:\phi)P$ &
+    A type $\phi$ which is \textit{refined} by filtering the possible values of a term using the
+    predicate $P$.
+    For example, were the type $(x: u8) x < 3$ used on a term, then at runtime the value of the
+    term must but in the set $\{0, 1, 2\}$.
+\end{tabular}
 
-\begin{table}
-    \centering
-    \begin{tabular}{|l|l|p{0.508\textwidth}|}
-        \cline{1-3}
-        $true$, $false$ & $bool$ & Literals for the booleans.\\\cline{1-3}
-        $\land$, $\lor$, $\Rightarrow$, $\Leftrightarrow$ & $bool, bool \rightarrow bool$ & Standard binary boolean operators.\\\cline{1-3}
-        $\lnot$ & $bool \rightarrow bool$ & Unary not.\\\cline{1-3}
-        $0$, ..., $255$ & $u8$ & Literals for the 8 bit unsigned integers.\\\cline{1-3}
-        $succ$, $pred$ & $u8 \rightarrow u8$ & The successor and predecessor of a $u8$, which will over/underflow.\\\cline{1-3}
-        $+$, $-$ & $u8, u8 \rightarrow u8$ & Addition and subtraction for $u8$, which will over/underflow.\\\cline{1-3}
-        $u8rec$ & $\tau, (u8 \rightarrow \tau \rightarrow \tau), u8 \rightarrow \tau$ &
-        Iterate over the $u8$s less than a given $u8$ in ascending order.\newline
-        $u8rec\ t\ t'\ 0 \coloneqq t$ \newline
-        $u8rec\ t\ t'\ succ(n) \coloneqq t'\ n\ (u8rec\ t\ t'\ n)$\\\cline{1-3}
-    \end{tabular}
-    \caption{Constants}
-    \label{tab:constants}
-\end{table}
+Denney also defines 7 terms, which I use.
 
-\begin{table}
-    \centering
-    \begin{tabular}{|l|l|l|}
-        \cline{1-3}
-        $bool$ & $bool$ & Interpret a boolean expression as a proposition.\\\cline{1-3}
-        $\textgreater$, $\textless$, $\leq$, $\geq$ & $u8, u8$ & Integer inequalities.\\\cline{1-3}
-    \end{tabular}
-    \caption{Predicates}
-    \label{tab:predicates}
-\end{table}
+\begin{tabular}{r|p{0.8\textwidth}}
+    $x$ &
+    A variable, which will be bound as the parameter of a function.\\\cline{1-2}
+    $k(t_1, ..., t_n)$ &
+    A constant, which takes $n$ arguments and returns a value.
+    Unlike a function value defined by the user, constants can have axioms that govern how the typechecker
+    should reason about them.\\\cline{1-2}
+    $\ast$ &
+    The value of type \textbf{1}\\\cline{1-2}
+    $\langle t, t' \rangle$ &
+    Creates a 2-tuple value.\\\cline{1-2}
+    $\lambda x: \phi . t$ &
+    Creates a function value.
+    $t$ is considered in an environment where $x$ has type $\phi$.\\\cline{1-2}
+    $\pi_i(t)$ &
+    Extract a value from a 2-tuple. $i \in \{1, 2\}$.\\\cline{1-2}
+    $t\ t'$ &
+    Apply function $t$ to argument $t'$.
+    The language uses call-by-name, the semantics of which I explain later.
+\end{tabular}
 
-\begin{figure}
-    \centering
-    \begin{prooftree}
-        \hypo{\Gamma \vdash n: u8}
-        \hypo{\Gamma \vdash t: \phi[0]}
-        \hypo{\Gamma \vdash t': \Pi_{n:nat} \Pi_{y:\phi[n]} \phi[succ(n)]}
-        \infer3[(U8REC)]{\Gamma \vdash u8rec\ t\ t'\ n: \phi[n]}
-    \end{prooftree}
-    \caption{Axiom Schemas}
-    \label{fig:axiom_schemas}
-\end{figure}
+Denney includes syntax for propositions, and semantics for them in his typing rules.
+Most of it is first order logic which is well known and not worth repeating here, but some constructs
+are of interest.
+The rest I include in the appendix.
 
-I have also added some syntactic sugar to make programming in the language easier.
+\begin{tabular}{r|p{0.8\textwidth}}
+    $t =_\phi t'$ &
+    This functions almost exactly as you would expect from equality, with the exception of function types.
+    2 functions can be equal even if they don't have the same image, we only care about functions
+    restricted to the domain of $\phi$.
+    Denney's (ABS-$\xi$-EQ) rule is used for this, and allows us to prove propositions like\newline
+    $\lambda x: bool . x \quad =_{(x:bool) x =_{bool} true\ \rightarrow\ bool} \quad \lambda x: bool . true$.
+    \\\cline{1-2}
+    $\phi \sqsubseteq \psi$ &
+    This is defined to mean $\phi$ is a supertype of $\psi$,
+    so any value which a term of type $\psi$ could have, $\phi$ can also have.
+\end{tabular}
+
+I've added some extra terms using syntactic sugar to make life easier for the user too.
 
 \begin{center}
     $\lambda x_1: \phi_1, ..., x_n: \phi_n . t \coloneqq \lambda x_1: \phi_1 .\ ...\ \lambda x_n: \phi_n . t$
 
-    $f\ t_1,\ ...,\ t_n \coloneqq (...(f\ t_1)\ ...)\ t_n$
+    $f\ t_1\ ...\ t_n \coloneqq (...(f\ t_1)\ ...)\ t_n$
 
     $let\ x_1: \phi_1 = t_1, ..., x_n: \phi_n = t_n\ in\ u \coloneqq (\lambda x_1: \phi_1 .\ ...(\lambda x_n: \phi_n . u)\ t_n...)\ t_1$
 \end{center}
@@ -171,7 +182,81 @@ I define my language's operational semantics in line with that of the $\lambda^{
     $\pi_i(\langle t_1, t_2 \rangle) \rightarrow_\beta t_i$
 \end{center}
 
-For the type checking, a definition of first order logic is also necessary, and Denney includes this
-in his calculus.
-I won't repeat it here but the one new type of proposition is $\phi \sqsubseteq \psi$ which means that
-$\phi$ is a supertype of $\psi$.
+To show an example of the strength of the calculus, I use it to prove that increasing an even number by
+2 leaves it even in Table \ref{fig:even_proof}.
+\textbf{Is this example worthwhile or should I try something else?}
+Every interesting example I can think of is very complex to show the whole proof,
+do I use a very simple example, show an incomplete proof or show a very long proof?
+
+\begin{table}
+    \centering
+    \begin{tabular}{|r|>{$}l<{$}|l|}
+        \hline
+        % TODO
+        1 &
+        \langle \pi_1(d2\ (n+1)), \pi_2(d2\ (n+1)) \rangle = d2\ (n+1)
+        & $\pi$-$\eta$-EQ\\\hline
+        % TODO
+        2 &
+        d2\ (n+1) = \langle \pi_2(d2\ n), \pi_1(d2\ n) + 1 \rangle
+        & U8REC\\\hline
+        3 &
+        \langle \pi_1(d2\ (n+1)), \pi_2(d2\ (n+1)) \rangle = \langle \pi_2(d2\ n), \pi_1(d2\ n) + 1 \rangle
+        & TRANS-EQ (1,2)\\\hline
+        4 &
+        \pi_2(d2\ (n+1)) = \pi_1(d2\ n) + 1
+        & PROJ2-$\xi$-EQ (5)\\\hline
+        % TODO
+        5 &
+        \pi_1(d2\ (n+1)) = \pi_2(d2\ n)
+        & SOMETHING\\\hline
+        6 &
+        \langle \pi_2(d2\ (n+1)), \pi_1(d2\ (n+1)) + 1 \rangle = \langle \pi_1(d2\ n)+1, \pi_2(d2\ n)+1 \rangle
+        & PAIR-$\xi$-EQ (4,5)\\\hline
+        % TODO
+        7 &
+        d2\ (n+2) = \langle \pi_2(d2\ (n+1)), \pi_1(d2\ (n+1))+1 \rangle
+        & SOMETHING\\\hline
+        8 &
+        d2\ (n+2) = \langle \pi_1(d2\ n) + 1, \pi_2(d2\ n) + 1 \rangle
+        & TRANS-EQ (6, 7)\\\hline
+        % TODO
+        9 &
+        \pi_1(d2\ n) + 1 = \pi_1(d2\ (n+2))
+        & SOMETHING\\\hline
+        % TODO
+        10 &
+        \pi_1(d2\ (n+2)) = \pi_2(d2\ (n+2))
+        & TRANS-EQ\\\hline
+        % TODO
+        11 &
+        n: even \vdash n + 2: even
+        & REFTYPE-INTRO\\\hline
+    \end{tabular}
+    \caption{Even + 2 = Even}
+    \label{fig:even_proof}
+\end{table}
+
+\subsection{My Compiler}
+
+My compiler is implemented in Rust.
+I chose Rust as it is a recently developed but stable language, interestingly it also has a focus
+on formal verification, but not with refinement types.
+It also has a vast library ecosystem and features such as variants and advanced pattern matching
+which greatly help with a project like a compiler.
+
+I chose to compile my language to LLVM (which Rust coincidentally also compiles to) instead of
+directly to any machine code.
+LLVM is another relatively recent technology which enables developers to write compilers which can
+target a wide array of architectures with much less effort than was historically needed.
+It also is highly optimised and when undertaking the project I was aware that I probably wouldn't
+have time to optimise the compiler much.
+
+The third big recent technology I made use of was the Z3 SMT solver, which I tasked with formally
+proving programs were sound once my type checker had reduced the problem down to first order SAT.
+
+Learning how to use each of these technologies was very enjoyable, and tied in with a lot of the
+courses I've taken over the last 2 years.
+Particularly: compilers, computer aided formal verification, lambda calculus and types, logic and proof
+and principles of programming languages all were very useful in enabling me to know how to proceed
+with challenging areas of the project.

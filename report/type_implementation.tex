@@ -1,0 +1,440 @@
+\section{Type Checker Implementation}
+
+\subsection{Implementation Overview}
+
+After reading various papers describing how other similarly typed languages go about type checking,
+(\textit{references go here})
+and after trying to implement Denney's typing rules directly, I realised that the correct way to
+proceed would be to move as much functionality as possible to an SMT solver.
+My implementation draws a lot of inspiration from the implementation of a similar calculus by
+Aguirre \cite{aguirre16}.
+I'll use an example in this chapter to explain how to translation works, the example I'll be
+trying to prove is $let\ n: (n:u8) n > 3 = 5\ in\ n$.
+After the syntactic sugar is removed, we are left with the program
+$(\lambda n: (n:u8) n > 3 . n)\ 5$.
+
+\subsection{Find Type Guards}
+
+First we look at where type guards are applied, as these are the areas where we need to check
+that terms satisfy certain conditions.
+There are 5 ways in which a type guard can be applied, but 4 of them don't involve refinement types.
+
+\begin{itemize}
+    \item Applying a function defined by the user.
+    The function has a type guard on arguments passed to it which is defined by the programmer.
+    This is the only type guard that can have refinement types.
+    \item Using $\pi_i$ to extract a value from a 2-tuple.
+    We need to check that the term being extracted from is in fact a 2-tuple.
+    \item Calling a constant.
+    Arguments to constants in my language are restricted to one of the unrefined types.
+    \item Calling a predicate.
+    Similarly, arguments to predicates are restricted to one of the unrefined types.
+    \item The whole program must be of type $u8$.
+    This will be the exit code once the program terminates.
+    Further development would probably lead to changing the program to be of a more versatile type,
+    perhaps using monads to enable IO and other side effects.
+\end{itemize}
+
+The type guards that don't use refinement types actually function identically to the
+$\lambda^{\times \rightarrow}$ calculus, so I type check those while doing the labelling pass.
+This pass also gives every variable a unique id which simplifies things later on, so our example
+becomes $(\lambda n: (m: u8) m > 3 . n)\ 5$.
+Type checking calls to user defined functions is more challenging as they make use of refinement
+types, and the first step is to find all instances of these so the compiler can check them individually.
+For this I wrote a function \texttt{find\_applications} which traverses the labelled syntax tree
+and finds applications.
+This finds the terms used in the application, and the context around the application, but the compiler
+needs the type of the parameter of the function to be able to check the argument term against it.
+Fortunately, this is not impossible.
+
+Type inference for refinement types is very challenging, but we don't need complete type inference,
+just the ability to infer the parameter type of a term.
+This is still tricky, and I do so using 2 utility functions \texttt{arg\_type} and \texttt{arg\_type\_of\_type}.
+
+\subsubsection{arg\_type}
+
+\texttt{arg\_type} takes 3 arguments in order to determine the type of the parameter of an expression.
+
+\begin{itemize}
+    \item An expression, which it will try to find the parameter type of, assuming it has undergone
+    some transformations.
+    \item The context to allow it to get the types of variables it needs.
+    \item A sequence of transformations, each of which could be a $\pi_1$, $\pi_2$ or an application.
+\end{itemize}
+
+\texttt{arg\_type} answers the question
+
+\begin{quote}
+    If I apply a series of transformations to an expression, what will be the parameter type of the
+    result?
+\end{quote}
+
+At the centre of the expression will be either a variable, with a type we know from context, or an
+abstraction, with a parameter type defined by the user.
+The function must traverse down through the tree of the expression finding one of these, and as it
+does building a stack of the operations it needs to apply on its way back up.
+Then as it comes back up, it pops elements off the stack to finally reach the parameter type of the
+original expression.
+Suppose in the context $f: \Sigma_{m:u8} \Pi_{n:(n:u8) n > m} \Pi_{x:(x:u8) x > m \land x < n} u8$
+we see the application $(\pi_2(f)\ 5)\ 4$.
+\texttt{arg\_type} would work as shown in Table \ref{tab:arg_type} to generate a type guard of
+$4: (x: u8) x > \pi_1(f) \land x < 5$.
+
+\begin{table}
+    \centering
+    \begin{tabular}{|l|l|l|}
+        \hline
+        \textbf{Function} & \textbf{Expression} & \textbf{Transformations}\\\hline
+        \texttt{arg\_type} & $\pi_2(f)\ 5$ & $nil$\\\hline
+        \texttt{arg\_type} & $\pi_2(f)$ & $Arg(5)$\\\hline
+        \texttt{arg\_type} & $f$ & $Second(f), Arg(5)$\\\hline
+        \multicolumn{3}{|c|}{
+            \textbf{Returns}
+        }\\\hline
+        \multicolumn{3}{|l|}{
+            \texttt{arg\_type\_of\_type(}
+            $\Sigma_{m:u8} \Pi_{n:(n:u8) n > m} \Pi_{x:(x:u8) x > m \land x < n} u8$, \quad
+            $Second(f), Arg(5)$
+            \texttt{)}
+        }\\\hline
+        \multicolumn{3}{|l|}{
+            \texttt{arg\_type\_of\_type(}
+            $\Pi_{n:(n:u8) n > m} \Pi_{x:(x:u8) x > m \land x < n} u8$, \quad
+            $Arg(5)$
+            \texttt{)}
+            $[\pi_1(f) / m]$
+        }\\\hline
+        \multicolumn{3}{|l|}{
+            \texttt{arg\_type\_of\_type(}
+            $\Pi_{x:(x:u8) x > m \land x < 5} u8$, \quad
+            $nil$
+            \texttt{)}
+            $[\pi_1(f) / m]$
+        }\\\hline
+        \multicolumn{3}{|l|}{
+            $(x:u8) x > m \land x < 5$ \quad
+            $[\pi_1(f) / m]$
+        }\\\hline
+        \multicolumn{3}{|l|}{
+            $(x:u8) x > \pi_1(f) \land x < 5$
+        }\\\hline
+    \end{tabular}
+    \caption{arg\_type running}
+    \label{tab:arg_type}
+\end{table}
+
+Running these algorithms on the example program of $(\lambda n : (n: u8) n > 3 . n)\ 5$ produces the
+type guards in Table \ref{tab:example_guards}
+
+\begin{table}
+    \centering
+    \begin{tabular}{|l|l|l|}
+        \hline
+        \textbf{Context} & \textbf{Term} & \textbf{Type}\\\hline
+        $nil$ & $(\lambda n: (n: u8) n > 3 . n)\ 5$ & $u8$\\\hline
+        $nil$ & $5$ & $(n: u8) n > 3$\\\hline
+        $n: u8$ & $n$ & $u8$\\\hline
+        $n: u8$ & $3$ & $u8$\\\hline
+    \end{tabular}
+    \caption{Type Guards For The Example Program}
+    \label{tab:example_guards}
+\end{table}
+
+We have now reduced our goal to something close to what an SMT solver can do:
+
+\begin{quote}
+    Find an environment that satisfies the context such that the term is not of the required type.
+\end{quote}
+
+\subsection{Lambda Lifting}
+
+Unfortunately, there is still an obstacle preventing an easy translation to SMT.
+To ask an SMT solver to find such an environment, it needs to understand the term to be able to reason
+about it, thus we need to be able to embed the term into the SMT program.
+This is almost easy, but Denney's calculus utilises higher order functions, which are not within
+the capabilities of first order logic, nor the Z3 SMT solver.
+
+\subsubsection{Defunctionalization}
+
+As an aside, my first thought for how to do this was to defunctionalize the program, which I later
+refined down to an algorithm less complex than defunctionalization.
+I implemented this algorithm, which first lambda lifted abstractions, then removed tuples from the
+program (by introducing 2 separate variables whenever a tuple variable was introduced), then removed
+all higher order functions using uncurrying and specialization.
+This worked nearly perfectly, but tragically failed if a variable of function type was introduced
+in a universal quantifier, as defunctionalization and specialization both rely on knowing a finite
+set of functions used in the same way, but if a higher order function comes from a universal
+quantifier, then this set is infinite so a function receiving it as an argument cannot be specialized.
+This led to me losing dozens of hours of work as I only realised this problem after implementing
+almost all of the type checker this way.
+
+\subsubsection{Lambda Lifting}
+
+Because SMT solvers don't have lambda abstractions, we need to change the way our functions are defined
+to make use of what they do have: named global functions.
+There is a simple process to translate the language into this, called lambda lifting, which I learned
+about here \cite{barbosaROTB19}.
+For any abstraction, we define a new function $f$ which has a parameter for each free variable in the
+abstraction, as well as the original parameter of the abstraction.
+We translate the abstraction to a partial application of $f$ to the required environment variables,
+which gives us an identical expression.
+Dependent typing of functions allows the compiler to add the function to the context instead of
+creating a new list of functions.
+Looking at Table \ref{tab:example_guards} we can see that only the first contains an abstraction,
+which we will move into the context by defining $f$ to be a function with a type that forces it to
+be equivalent to the abstraction.
+Table \ref{tab:example_lambda_lifted} shows the lambda lifted program type guards.
+
+\begin{table}
+    \centering
+    \begin{tabular}{|l|l|l|}
+        \hline
+        \textbf{Context} & \textbf{Term} & \textbf{Type}\\\hline
+        $f: \Pi_{n: (n:u8) n > 3} (m: u8) m =_{u8} n$ & $f\ 5$ & $u8$\\\hline
+        $nil$ & $5$ & $(n: u8) n > 3$\\\hline
+        $n: u8$ & $n$ & $u8$\\\hline
+        $n: u8$ & $3$ & $u8$\\\hline
+    \end{tabular}
+    \caption{Lambda Lifted Type Guards For The Example Program}
+    \label{tab:example_lambda_lifted}
+\end{table}
+
+\subsubsection{Higher Order Functions}
+
+The best method to simulate higher order functions in an SMT solver seems to be defining a polymorphic
+apply function, which takes as arguments a function to apply and an argument to apply it to and returns
+the result of the application.
+This is discussed everywhere I could find refinement type checking
+\cite{aguirre16}, \cite{barbosaROTB19}, \cite{mengP08}, \cite{blanchetteBP13}.
+Each function type is represented by an uninterpreted type in Z3 which allows the SMT solver to use as
+many different values in the type it needs to find a solution.
+There is no definition that accompanies the apply functions either, but we give Z3 some information
+about them each time a function is defined.
+For example, to define the function in the example program, the SMT-LIB2 code looks like this.
+
+\begin{alltt}
+    (declare-const f fun-u8-to-u8)
+    (assert (forall ((n u8)) (=> (> n 3) (= (@ f n) n))))
+\end{alltt}
+
+Which means that for any $u8$ which is greater than 3, applying $f$ to it is equal to the original value.
+Using this means that user defined functions are just values which the SMT solver can work with
+easily, so higher order functions are no longer a problem.
+
+\subsection{Translation To SMT}
+
+I've already shown how I encode application to circumvent the lack of higher order functions in Z3.
+To make the code more readable I split the translation up into 2 parts.
+The first produces a program encoded using structures I defined in Rust, which makes it much easier
+to work with while doing the translation.
+I then map that onto an actual Z3 program using the Rust Z3 library which takes very little effort
+due to my Rust data structures already being very close to how programs are encoded in Z3.
+
+\subsubsection{My SMT Structure}
+
+My SMT data structure consists of 3 lists:
+
+\begin{itemize}
+    \item \textbf{Constant Declarations} -
+    A list of variables from the context, each with an \textit{unrefined type}.
+    The SMT solver will be tasked with finding values for these variables to reject a type guard.
+    We have to use unrefined types as these are what the SMT solver can understand, but we force
+    Z3 to find values that are acceptable for the refined types by adding an assertion for each
+    variable in the context, restricting it.
+    \item \textbf{Assertions} -
+    A list of expressions with type $bool$.
+    We task Z3 with finding a value for each constant such that every assertion evaluates to $true$.
+    There is an assertion restricting each constant to its refined type, as well as one which asserts
+    that the expression we are checking has the type required by the guard.
+    Since we are looking for an exception, the last assertion asserts that the expression does not
+    satisfy the refinement on its type, thus if Z3 concludes with unsat then every combination must
+    produce a value for the expression that is acceptable to the type.
+    \item \textbf{Unrefined Types} -
+    A list of unrefined types that are used in the program, ordered so any part of a type appears
+    before the type itself does.
+    This is generated by maintaining a list as the judgement is traversed, and whenever a type is
+    found, calling a \texttt{register\_type} function to add its parts and then it to the list if
+    they aren't already present.
+\end{itemize}
+
+Note that an unrefined type is a type that contains no refinements or dependent typing, i.e. a type
+from the $\lambda^{\times \rightarrow}$ calculus.
+
+In order to generate the assertions, I need to split a type into an unrefined type, and a single
+predicate which refines it into the actual type.
+I do this using a \texttt{simplify} function that passes \textbf{1}, $bool$ and $u8$ through,
+but traverses down 2-tuple, functions and refined types to combine all of the refinements into one
+predicate.
+Denney conveniently showed how to represent 2-tuple and function types as refined types in his paper
+by interpreting
+
+\begin{center}
+    $\Sigma_{x:(x:\sigma)P} (y:\tau)Q$
+    \quad as \quad
+    $(z: \sigma \times \tau)P[\pi_1(z)/x] \land Q[\pi_1(z)/x, \pi_2(z)/y]$
+
+    and
+
+    $\Pi_{x:(x:\sigma)P} (y:\tau)Q$
+    \quad as \quad
+    $(f: \sigma \rightarrow \tau) \forall x : \sigma . P \supset Q[f\ x / y]$
+\end{center}
+
+With these representations in mind, we take the conjunction of all the refinements applied to a type
+to get a predicate that covers all of them.
+Once we have this, it becomes straightforward to generate all the assertions for the SMT program.
+
+Continuing the example, Table \ref{tab:example_smt} shows the SMT programs generated for each
+judgement.
+\begin{table}
+    \centering
+    \begin{tabular}{|l|l|l|}
+        \hline
+        \textbf{Context} & \textbf{Term} & \textbf{Type}\\\hline
+        $f: \Pi_{n: (n:u8) n > 3} (m: u8) m =_{u8} n$ & $f\ 5$ & $u8$\\\hline
+        \multicolumn{3}{|p{1.0\textwidth}|}{
+            \texttt{(declare-sort u8\_to\_u8)}\newline
+            \texttt{(declare-fun apply-u8\_to\_u8 (u8\_to\_u8 u8) u8)}\newline
+            \texttt{(declare-const f u8\_to\_u8)}\newline
+            \texttt{(assert (forall ((n u8)) (=> (> n 3) (= (apply-u8\_to\_u8 f n) n))))}\newline
+            \texttt{(assert (not true))}
+        }\\\hline
+        $nil$ & $5$ & $(n: u8) n > 3$\\\hline
+        \multicolumn{3}{|p{1.0\textwidth}|}{
+            \texttt{(assert (not (> 5 3)))}
+        }\\\hline
+        $n: u8$ & $n$ & $u8$\\\hline
+        \multicolumn{3}{|p{1.0\textwidth}|}{
+            \texttt{(declare-const n u8)}\newline
+            \texttt{(assert true)}\newline
+            \texttt{(assert (not true))}
+        }\\\hline
+        $n: u8$ & $3$ & $u8$\\\hline
+        \multicolumn{3}{|p{1.0\textwidth}|}{
+            \texttt{(declare-const n u8)}\newline
+            \texttt{(assert true)}\newline
+            \texttt{(assert (not true))}
+        }\\\hline
+    \end{tabular}
+    \caption{SMT Programs For The Example}
+    \label{tab:example_smt}
+\end{table}
+A lot of the assertions in Table \ref{tab:example_smt} seem trivial.
+This is because for a judgement like $3:u8$, the unrefined type of $3$ has already been checked in
+the labelling stage, and there are no refinements on the type so there is no more to check.
+These extra assertions make little difference to the performance of the solver, so I leave them
+in rather than finding a way to avoid them.
+
+\subsubsection{Running With z3.rs}
+
+This translation is made very simple as the previous step has already got very close to the format
+expected by Z3.
+Translating the types is the most interesting part, as I need to simulate some polymorphism for
+the apply function and the functions for creating and extracting from 2-tuples.
+The types \textbf{1}, $bool$ and $u8$ are easy, and type refinements were removed in the last
+stage so only tuples and functions are left.
+Each function type becomes an uninterpreted type and each has an associated apply function for
+applying functions of that type.
+Each tuple type is used to define a tuple in Z3, with functions for creating and extracting from
+them.
+The function types and tuple types are stored in maps to allow the compiler to access the type
+representations or functions when needed while translating the assertions and declarations.
+The compiler then constructs the program from the assertions and declarations and runs Z3.
+If Z3 returns unsat, then there is no environment that satisfies the context such that the value
+of the term doesn't satisfy the requirements of the type, thus the term can be typed.
+If Z3 returns sat, then there is a typing error in the program, which the compiler reports to the
+user.
+One of the advantages of this method is that it provides a counterexample when a type check fails,
+and if I had more time I would like to have added the ability for the compiler to present the
+counterexample to the user in a readable way to make debugging the error much easier.
+
+\subsection{Implementing u8rec}
+
+Implementing $u8rec$ based on Denney's $natrec$ was an interesting challenge, due to the limitations
+of the SMT solver.
+
+\subsubsection{Implementing u8rec in Z3}
+
+The obvious way to implement u8rec would be to define a \texttt{u8rec} function in Z3, which can be
+used in translated expressions.
+We could do so using 2 of Denney's axiom schemas which describe equalities.
+
+\begin{alltt}
+(declare-sort bool_to_bool)
+(declare-fun apply (bool_to_bool bool) bool)
+(declare-sort bool_iter)
+(declare-fun apply_bool_iter (bool_iter u8) bool_bool)
+(define-fun succ ((x u8)) u8
+  (bvadd x 1)
+)
+(declare-fun u8rec_bool (bool bool_iter u8) bool)
+(assert (forall ((x bool) (x_iter bool_iter)) (=
+  (u8rec_bool x x_iter 0)
+  x
+)))
+(assert (forall ((x bool) (x_iter bool_iter) (n u8)) (=>
+  (not (= n 255))
+  (=
+    (u8rec_bool x x_iter (succ n))
+    (apply_bool_bool (apply_bool_iter x_iter n) (u8rec_bool x x_iter n))
+  )
+)))
+\end{alltt}
+
+This makes it very easy to encode uses of $u8rec$ as they can be translated directly, however, when
+we try running Z3 on a program like this we encounter a problem, it runs for a while and then returns
+unknown.
+This is because Z3 cannot prove inductive facts (\textit{Do I need a citation for this?}) which is
+required to prove any property making use of both of these rules.
+Due to this limitation, I found that I could leave out 2 of Denney's axiom schemas, and use only the
+remaining one to have a calculus just as useful, but accessible to Z3.
+The rule I keep is
+
+\begin{center}
+    \begin{prooftree}
+        \hypo{\Gamma \vdash n : (n:u8) n \neq_{u8} 255}
+        \hypo{\Gamma \vdash t : \phi[0]}
+        \hypo{\Gamma \vdash t' : \Pi_{n:(n:u8) n \neq_{u8} 255} \Pi_{p:\phi[n]} \phi[succ(n)]}
+        \infer3[(U8REC)]{\Gamma \vdash u8rec\ t\ t'\ n : \phi[n]}
+    \end{prooftree}
+\end{center}
+
+The compiler is able to reason with this rule by determining in the labelling pass what the type
+$\phi[n]$ is, and then it adds 3 type judgements based on $\phi[n]$ for $n$, $t$ and $t'$ and
+replaces the occurance of $u8rec\ t\ t'\ n$ with a variable of type $\phi[n]$.
+This means that after the lambda lifting pass, all occurances of $u8rec$ are gone so the translation
+to SMT doesn't need to be able to deal with them.
+This approach effectively forces the user to provide the base case and inductive hypothesis explicitly,
+as the compiler gets the definition of $\phi[n]$ from the term $t'$ using the previously mentioned
+utility function \texttt{arg\_type}.
+Amazingly, this doesn't restrict the language at all, results of $u8rec$ can still be typed with anything
+they would have been able to otherwise, but sometimes the user is required to give a more restrictive
+type to $t'$ for it to be able to happen.
+Similarly, I don't use Denney's rule ($\lambda$-$\beta$-EQ) as it allows circumventing type guards
+in some instances.
+This would make life easier for the user as they would be able to use less descriptive types for
+parameters while still making strong assumptions about them as long as any arguments used have
+acceptable types, but it would add too much complexity to the compiler and is only more useful
+for saving the user time rather than improving the functionality of the language.
+
+\subsection{Optimization}
+
+My compiler has a lot of room for optimization, but it was not a focus for me, as the role of my
+compiler is much simpler than that of Z3.
+Running the SMT solver will always be the most time consuming part of the type checking.
+There are various computations such as computing the unrefined type of an expression after the lambda
+abstraction stage, which are redone many times and would benefit from being cached.
+Also once split into judgements, they are checked independantly and in sequence, even though there
+is a lot of overlap as they all come from the same program.
+It would be possible to do a lot of the computation before splitting the program into judgements,
+and then checking them all in parallel to speed up type checking.
+The biggest change I could make, would be to make changes to the SMT program that is produced to
+make it quicker to check for satisfication.
+Because of the equivalence
+
+\begin{center}
+    $\lnot \forall x \in X . P \equiv \exists x \in X . \lnot P$
+\end{center}
+
+we can expand universal quantifiers in the final assertion (which is always a negation) to additional
+constants, and so remove instances of quantification, which Z3 is not as good at dealing with.

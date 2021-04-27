@@ -1,0 +1,140 @@
+\section{Type Checker Theory}
+
+\subsection{From the introduction}
+
+\textit{This needs to be woven into this chapter properly}
+
+I leave out one of Denney's typing rules ($\lambda$-$\beta$-EQ) as it is hard for an SMT solver to reason with and
+the same expressiveness can be achieved without it by choosing a more restrictive $\phi$.
+I also define the sets of ground types (Table \ref{tab:ground_types}), constants (Table \ref{tab:constants}),
+predicates (Table \ref{tab:predicates}) and axioms (Figure \ref{fig:axiom_schemas}) that Denney uses in his
+calculus.
+My implementation of $u8rec$ is based on Denney's for $natrec$ but I leave out 2 typing rules as Z3 isn't
+capable of inductive reasoning which is required to allow it to work with them.
+Fortunately, again by carefully selecting the type guard on the iterator function argument to $u8rec$,
+we don't lose expressiveness without these axioms, but we essentially force the programmer to specify the
+induction so it can be abstracted out before the SMT solver is run.
+
+\begin{table}
+    \centering
+    \begin{tabular}{|l|l|}
+        \cline{1-2}
+        $bool$ & Booleans\\\cline{1-2}
+        $u8$ & Unsigned 8 bit integers\\\cline{1-2}
+    \end{tabular}
+    \caption{Ground Types}
+    \label{tab:ground_types}
+\end{table}
+
+\begin{table}
+    \centering
+    \begin{tabular}{|l|l|p{0.508\textwidth}|}
+        \cline{1-3}
+        $true$, $false$ & $bool$ & Literals for the booleans.\\\cline{1-3}
+        $\land$, $\lor$, $\Rightarrow$, $\Leftrightarrow$ & $bool, bool \rightarrow bool$ & Standard binary boolean operators.\\\cline{1-3}
+        $\lnot$ & $bool \rightarrow bool$ & Unary not.\\\cline{1-3}
+        $0$, ..., $255$ & $u8$ & Literals for the 8 bit unsigned integers.\\\cline{1-3}
+        $succ$, $pred$ & $u8 \rightarrow u8$ & The successor and predecessor of a $u8$, which will over/underflow.\\\cline{1-3}
+        $+$, $-$ & $u8, u8 \rightarrow u8$ & Addition and subtraction for $u8$, which will over/underflow.\\\cline{1-3}
+        $u8rec$ & $\tau, (u8 \rightarrow \tau \rightarrow \tau), u8 \rightarrow \tau$ &
+        Recurse over the $u8$s less than a given $u8$ in ascending order.\newline
+        $u8rec\ t\ t'\ 0 \coloneqq t$ \newline
+        $u8rec\ t\ t'\ succ(n) \coloneqq t'\ n\ (u8rec\ t\ t'\ n)$\\\cline{1-3}
+    \end{tabular}
+    \caption{Constants}
+    \label{tab:constants}
+\end{table}
+
+\begin{table}
+    \centering
+    \begin{tabular}{|l|l|l|}
+        \cline{1-3}
+        $bool$ & $bool$ & Interpret a boolean expression as a proposition.\\\cline{1-3}
+        $\textgreater$, $\textless$, $\leq$, $\geq$ & $u8, u8$ & Integer inequalities.\\\cline{1-3}
+    \end{tabular}
+    \caption{Predicates}
+    \label{tab:predicates}
+\end{table}
+
+\begin{figure}
+    \centering
+    \begin{prooftree}
+        \hypo{\Gamma \vdash n: u8}
+        \hypo{\Gamma \vdash t: \phi[0]}
+        \hypo{\Gamma \vdash t': \Pi_{n:nat} \Pi_{y:\phi[n]} \phi[succ(n)]}
+        \infer3[(U8REC)]{\Gamma \vdash u8rec\ t\ t'\ n: \phi[n]}
+    \end{prooftree}
+    \caption{Axiom Schemas}
+    \label{fig:axiom_schemas}
+\end{figure}
+
+\subsection{Introducing The Calculus}
+
+The type checker is easily the most complex aspect of the compiler, as the types it checks are capable
+of expressing so much more than those of most languages.
+Denney's calculus, which mine is based on, is far more complex than the simply typed lambda calculus
+even though it only introduces tuples and refinement types.
+To give a sense of the difference, lets compare deriving types for a term
+with (Figure \ref{fig:with_refinements}) and without (Figure \ref{fig:without_refinements})
+refinements.
+Note that in the refinement typed example I use the type $4$ to mean $(x:u8) x =_{u8} 4$.
+
+\begin{figure}
+    \centering
+    \begin{prooftree}
+        \infer0{x:4 \vdash x: (x:u8)x =_{u8} 4}
+        \infer0{x:4, x:u8, x =_{u8} 4 \vdash x:u8}
+        \infer1{x:4 \vdash u8 \sqsubseteq 4}
+        \infer2{x:4 \vdash x: u8}
+        \infer0{x:4 \vdash x:4}
+        \infer1{x:4 \vdash x =_{u8} 4}
+        \infer1{x:4 \vdash x + 2 =_{u8} 6}
+        \infer2{x:4 \vdash x: (y:u8) y+2 =_{u8} 6}
+    \end{prooftree}
+    \caption{With Refinement Types}
+    \label{fig:with_refinements}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \begin{prooftree}
+        \infer0{x:u8 \vdash x:u8}
+    \end{prooftree}
+    \caption{Without Refinement Types}
+    \label{fig:without_refinements}
+\end{figure}
+
+It is clear to see how much of a difference the refinement types make to the complexity of type checking.
+Denney's calculus has 62 typing rules, which don't include the extra rules that would need to be added
+for ground types like $bool$ and $u8$ to allow them to be useful in refinement types.
+
+\subsection{Implementing The Typing Rules}
+
+Type checking for a standard language can be done using the typing rules of the calculus for the language.
+This is because the bottom judgement in a typing rule is unique to that typing rule, and if a judgement
+fits the bottom of a rule, the requirements for the top rule can be generated from it.
+For example, suppose we wish to show the typing $\langle \rangle \vdash \lambda x: u8 . x: u8 \rightarrow u8$
+in the simply typed lambda calculus.
+We try to construct a proof tree from the bottom up.
+The bottom rule must be (ABS), which must require $x:u8 \vdash x : u8$.
+Again only one rule can be used which is (VAR) to complete the tree.
+This way we can easily construct a proof tree if it exists, or prove it doesn't exist for any judgement.
+Now we try the same exercise using Denney's calculus, supposing we want to prove that
+$\langle \rangle \vdash \lambda x: u8 . x : u8$ cannot have a proof tree.
+The rules that could be at the bottom of our tree are (EQ) or (WEAKEN).
+Both of these have a part of the top of the rule that isn't mentioned in the bottom.
+To prove we can't use (EQ) we have to show that there exists no $t'$ such that
+$\langle \rangle \vdash \lambda x: u8 . x =_{u8} t'$, which is extremely difficult.
+To prove we can't use (WEAKEN) we have to show that there exists no $\phi'$ such that
+$\langle \rangle \vdash \lambda x: u8 . x : \phi'$ and $\langle \rangle \vdash \phi \sqsubseteq \phi'$
+which is very difficult also.
+In fact, because of the first order logic embedded into Denney's calculus, we can reduce the
+problem of satisfication for first order logic to checking a judgement in the calculus, which
+further indicates the difficulty of type checking this language.
+
+To be able to check types, I break the problem down into logic which can be dealt with by an SMT
+solver using a method I discuss in the next chapter.
+
+\textit{I plan to add a short discussion about one of the other calculuses I looked at while deciding what to implement to this chapter}
+
+% Other stuff I read about refinement types while researching this
