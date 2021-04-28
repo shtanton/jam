@@ -392,7 +392,7 @@ The rule I keep is
 
 \begin{center}
     \begin{prooftree}
-        \hypo{\Gamma \vdash n : (n:u8) n \neq_{u8} 255}
+        \hypo{\Gamma \vdash n : u8}
         \hypo{\Gamma \vdash t : \phi[0]}
         \hypo{\Gamma \vdash t' : \Pi_{n:(n:u8) n \neq_{u8} 255} \Pi_{p:\phi[n]} \phi[succ(n)]}
         \infer3[(U8REC)]{\Gamma \vdash u8rec\ t\ t'\ n : \phi[n]}
