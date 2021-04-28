@@ -739,6 +739,29 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
                     context.clone().into_iter().collect(),
                     vec![FnProcess::Arg(var_n.clone())],
                 ) {
+                    let not_255 = {
+                        let id = analyzer.ident_gen.next();
+                        Type::Refinement(
+                            id,
+                            Box::new(Type::U8),
+                            Proposition::Implies(Box::new((
+                                Proposition::Equal(Box::new((
+                                    Type::U8,
+                                    Expression {
+                                        kind: ExpressionKind::Variable(id),
+                                        typ: UnrefinedType::U8,
+                                        env: im_hashmap! {id => UnrefinedType::U8},
+                                    },
+                                    Expression {
+                                        kind: ExpressionKind::Call(Constant::U8(255), vec![]),
+                                        typ: UnrefinedType::U8,
+                                        env: ImHashMap::new(),
+                                    },
+                                ))),
+                                Proposition::False,
+                            ))),
+                        )
+                    };
                     let mut type_succ_n = type_n.clone();
                     type_succ_n.substitute(
                         &ExpressionKind::Call(Constant::Succ, vec![var_n.clone()]),
@@ -763,7 +786,7 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
                             typ: Type::Function(
                                 n,
                                 Box::new((
-                                    Type::U8,
+                                    not_255,
                                     Type::Function(
                                         analyzer.ident_gen.next(),
                                         Box::new((type_n, type_succ_n)),
@@ -790,7 +813,7 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
         .map_err(|_| "error generating smt program".to_string())?;
     for (i, smt) in smt_programs.into_iter().enumerate() {
         println!("Program {}:", i);
-        println!("{}", smt);
+        //println!("{}", smt);
         match run_smt(smt).map_err(|_| "error running SMT solver".to_string())? {
             SmtResult::Pass => {
                 println!("PASS");

@@ -4,4 +4,4 @@
 	id: (fn x:u8 y:u8{(= u8 x y)})
 		= (fn x:u8 (u8rec (0) iter x))
 	in
-	(true))
+	(id (5)))

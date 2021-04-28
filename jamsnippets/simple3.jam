@@ -1,4 +1,5 @@
-(
-	(fn x:x:bool{(= bool x (false))} (true))
-	(true)
+(let
+	x: <a: u8 u8> = <(6) (10)>
+	in
+	(succ (second x))
 )
