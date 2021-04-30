@@ -76,7 +76,16 @@ impl CodeGen {
             UnrefinedType::Function(contents) => {
                 let param_type = self.get_type(&contents.0)?;
                 let body_type = self.get_type(&contents.1)?;
-                LLVMFunctionType(body_type, [param_type].as_ptr() as *mut _, 1, 0)
+                LLVMFunctionType(
+                    body_type,
+                    [
+                        LLVMPointerType(LLVMIntTypeInContext(self.context, 8), 0),
+                        param_type,
+                    ]
+                    .as_ptr() as *mut _,
+                    2,
+                    0,
+                )
             }
             _ => return Err(()),
         })
@@ -93,19 +102,10 @@ impl CodeGen {
                 2,
                 0,
             ),
-            UnrefinedType::Function(contents) => LLVMPointerType(
+            UnrefinedType::Function(_) => LLVMPointerType(
                 LLVMStructTypeInContext(
                     self.context,
-                    [LLVMPointerType(
-                        LLVMFunctionType(
-                            self.get_type(&contents.1)?,
-                            [self.get_type(&contents.0)?].as_ptr() as *mut _,
-                            1,
-                            0,
-                        ),
-                        0,
-                    )]
-                    .as_ptr() as *mut _,
+                    [LLVMPointerType(self.get_function_type(typ)?, 0)].as_ptr() as *mut _,
                     1,
                     0,
                 ),
@@ -218,15 +218,6 @@ impl CodeGen {
             ExpressionKind::Variable(id) => self.get_variable(id).ok_or(())?,
             ExpressionKind::Abstraction(id, _, body) => {
                 let fun_type = self.get_function_type(&expr.typ)?;
-                let func = LLVMAddFunction(self.module, c_str!("fn"), fun_type);
-                let block = LLVMAppendBasicBlockInContext(self.context, func, c_str!("fn_block"));
-                let func_builder = LLVMCreateBuilderInContext(self.context);
-                LLVMPositionBuilderAtEnd(func_builder, block);
-                let param = LLVMGetParam(func, 0);
-                self.register_variable(id, param);
-                let body = self.gen_expr(*body, func_builder)?;
-                LLVMBuildRet(func_builder, body);
-                LLVMDisposeBuilder(func_builder);
                 let env_vec = expr.env.into_iter().collect::<Vec<_>>();
                 let env_size = env_vec
                     .iter()
@@ -243,9 +234,38 @@ impl CodeGen {
                     env_type_members.len() as u32,
                     0,
                 );
+                let func = LLVMAddFunction(self.module, c_str!("fn"), fun_type);
+                let block = LLVMAppendBasicBlockInContext(self.context, func, c_str!("fn_block"));
+                let func_builder = LLVMCreateBuilderInContext(self.context);
+                LLVMPositionBuilderAtEnd(func_builder, block);
+                let untyped_env_param = LLVMGetParam(func, 0);
+                let env_param = LLVMBuildBitCast(
+                    func_builder,
+                    untyped_env_param,
+                    LLVMPointerType(env_type, 0),
+                    c_str!("env"),
+                );
+                let param = LLVMGetParam(func, 1);
+                self.register_variable(id, param);
+                let old_env = self.env.clone();
+                for (i, (id, _)) in env_vec.iter().enumerate() {
+                    let env_var_ptr = LLVMBuildStructGEP(
+                        func_builder,
+                        env_param,
+                        (i + 1) as u32,
+                        c_str!("env_var_ptr"),
+                    );
+                    let env_var = LLVMBuildLoad(func_builder, env_var_ptr, c_str!("env_var"));
+                    self.register_variable(*id, env_var);
+                }
+                let body = self.gen_expr(*body, func_builder)?;
+                self.env = old_env;
+                LLVMBuildRet(func_builder, body);
+                LLVMDisposeBuilder(func_builder);
+                let untyped_env_ptr = self.build_malloc(builder, env_size);
                 let env_ptr = LLVMBuildBitCast(
                     builder,
-                    self.build_malloc(builder, env_size),
+                    untyped_env_ptr,
                     LLVMPointerType(env_type, 0),
                     c_str!("env"),
                 );
@@ -264,7 +284,19 @@ impl CodeGen {
                 let arg = self.gen_expr(arg, builder)?;
                 let fun_ptr = LLVMBuildStructGEP(builder, env, 0, c_str!("env_fun_ptr"));
                 let fun = LLVMBuildLoad(builder, fun_ptr, c_str!("env_fun"));
-                LLVMBuildCall(builder, fun, [arg].as_ptr() as *mut _, 1, c_str!("apply"))
+                let untyped_env = LLVMBuildBitCast(
+                    builder,
+                    env,
+                    LLVMPointerType(LLVMIntTypeInContext(self.context, 8), 0),
+                    c_str!("untyped_env"),
+                );
+                LLVMBuildCall(
+                    builder,
+                    fun,
+                    [untyped_env, arg].as_ptr() as *mut _,
+                    2,
+                    c_str!("apply"),
+                )
             }
             ExpressionKind::Ast => LLVMConstNull(self.get_type(&expr.typ)?),
             ExpressionKind::Tuple(contents) => {

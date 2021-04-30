@@ -1,5 +1,6 @@
 (let
-	x: <a: u8 u8> = <(6) (10)>
+	x: u8 = (15)
+	y: u8 = (12)
 	in
-	(succ (second x))
+	(succ x)
 )
