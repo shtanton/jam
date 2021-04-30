@@ -45,20 +45,6 @@ impl CodeGen {
         )
     }
 
-    /*unsafe fn get_type_size(&self, typ: *mut LLVMType, builder: *mut LLVMBuilder) -> *mut LLVMValue {
-        let ptr = LLVMBuildGEP(
-            builder,
-            LLVMConstNull(typ),
-            [1].as_ptr() as *mut _,
-            1,
-            c_str!("size_of_gep"),
-        );
-        LLVMBuildPtrToInt(
-            builder,
-            ptr,
-            LLVMIntTypeInContext(self.context, 64),
-    }*/
-
     fn get_type_size(&self, typ: &UnrefinedType) -> u64 {
         match typ {
             UnrefinedType::One => 0,
@@ -112,41 +98,6 @@ impl CodeGen {
                 0,
             ),
         })
-        /*match typ {
-            Type::Function { id, args, ret } => {
-                if let Some(typ) = env.variables.get(id) {
-                    typ.typ()
-                } else {
-                    let llvm_args: Result<Vec<_>, String> = args
-                        .iter()
-                        .map(|arg| {
-                            if arg.is_function() {
-                                unsafe {
-                                    let typ = self.get_type(arg, env)?;
-                                    Ok(LLVMPointerType(typ, 0))
-                                }
-                            } else {
-                                self.get_type(arg, env)
-                            }
-                        })
-                        .collect();
-                    let mut llvm_args = llvm_args?;
-                    unsafe {
-                        llvm_args.push(LLVMPointerType(LLVMIntTypeInContext(self.context, 8), 0));
-                    };
-                    let llvm_ret = self.get_type(ret.as_ref(), env)?;
-                    let llvm_typ = unsafe {
-                        LLVMFunctionType(
-                            llvm_ret,
-                            llvm_args.as_ptr() as *mut _,
-                            args.len() as u32 + 1,
-                            0,
-                        )
-                    };
-                    Ok(llvm_typ)
-                }
-            }
-        }*/
     }
 
     fn get_variable(&self, value: Identifier) -> Option<*mut LLVMValue> {
@@ -313,79 +264,6 @@ impl CodeGen {
             }
             ExpressionKind::U8Rec(_, _, _) => LLVMConstNull(self.get_type(&expr.typ)?),
         })
-        /*match expr.kind {
-            ExpressionKind::FunctionCall {
-                function,
-                params: param_exprs,
-            } => {
-                let params: Result<Vec<*mut LLVMValue>, String> = param_exprs
-                    .into_iter()
-                    .map(|param| self.gen_expr(param, builder, env, None))
-                    .collect();
-                let mut params = params?;
-                let closure = self.get_variable_value(function, env)?;
-                let value = unsafe {
-                    LLVMDumpValue(closure);
-                    println!("");
-                    let function =
-                        LLVMBuildExtractValue(builder, closure, 0, c_str!("fun_from_closure"));
-                    println!("Extracted function");
-                    let env = LLVMBuildExtractValue(builder, closure, 1, c_str!("env"));
-                    params.push(env);
-                    println!("About to build call");
-                    LLVMBuildCall(
-                        builder,
-                        function,
-                        params.as_ptr() as *mut _,
-                        params.len() as u32,
-                        c_str!("call"),
-                    )
-                };
-                Ok(value)
-            }
-            ExpressionKind::Fn { params, body } => {
-                let typ = self.get_type(&expr.typ, env)?;
-                let closure = unsafe {
-                    let func = LLVMAddFunction(self.module, c_str!("fn"), typ);
-                    let mut env = env.clone();
-                    if let Some(id) = my_id {
-                        env.variables.insert(id, Value::Value(func));
-                    }
-                    let block = LLVMAppendBasicBlockInContext(self.context, func, c_str!("fn"));
-                    let func_builder = LLVMCreateBuilderInContext(self.context);
-                    LLVMPositionBuilderAtEnd(func_builder, block);
-                    for (index, id) in params.into_iter().enumerate() {
-                        let value = LLVMGetParam(func, index as u32);
-                        env.variables.insert(id, Value::Value(value));
-                    }
-                    let return_expr = self.gen_expr(*body, func_builder, &env, None)?;
-                    LLVMBuildRet(func_builder, return_expr);
-                    LLVMDisposeBuilder(func_builder);
-                    let env_type = LLVMPointerType(LLVMIntTypeInContext(self.context, 8), 0);
-                    let closure_env = self.build_malloc(builder, 0);
-                    let closure_type = LLVMStructTypeInContext(
-                        self.context,
-                        [LLVMPointerType(typ, 0), env_type].as_ptr() as *mut _,
-                        2,
-                        0,
-                    );
-                    let closure_without_env = LLVMConstNamedStruct(
-                        closure_type,
-                        [func, LLVMGetUndef(env_type)].as_ptr() as *mut _,
-                        2,
-                    );
-                    let closure = LLVMBuildInsertValue(
-                        builder,
-                        closure_without_env,
-                        closure_env,
-                        1,
-                        c_str!("closure"),
-                    );
-                    closure
-                };
-                Ok(closure)
-            }
-        }*/
     }
 }
 
