@@ -491,10 +491,9 @@ impl Analyzer {
                 let right = self.label_proposition(right, env)?;
                 Proposition::Implies(Box::new((left, right)))
             }
-            // TODO change to supertype
-            SProposition::Subtype(subtype, supertype) => {
-                let subtype = self.label_type(subtype, env.clone())?;
-                let supertype = self.label_type(supertype, env)?;
+            SProposition::Supertype(supertype, subtype) => {
+                let supertype = self.label_type(supertype, env.clone())?;
+                let subtype = self.label_type(subtype, env)?;
                 Proposition::Supertype(Box::new((supertype, subtype)))
             }
         })

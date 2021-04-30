@@ -29,7 +29,7 @@ pub enum Proposition {
     Forall(Identifier, Box<Type>, Box<Proposition>),
     Call(Predicate, Vec<Expression>),
     Equal(Box<Type>, Expression, Expression),
-    Subtype(Box<Type>, Box<Type>),
+    Supertype(Box<Type>, Box<Type>),
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -218,10 +218,10 @@ named!(proposition_equal(&str) -> Proposition, do_parse!(
 ));
 
 named!(proposition_subtype(&str) -> Proposition, do_parse!(
-    char!('(') >> ws0 >> tag!("<:") >> ws1 >>
+    char!('(') >> ws0 >> tag!(":>") >> ws1 >>
     left: typ >> ws1 >>
     right: typ >> ws0 >> char!(')') >>
-    (Proposition::Subtype(Box::new(left), Box::new(right)))
+    (Proposition::Supertype(Box::new(left), Box::new(right)))
 ));
 
 named!(proposition_call(&str) -> Proposition, do_parse!(
