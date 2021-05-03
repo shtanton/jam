@@ -1,6 +1,6 @@
 (let
 	x: u8 = (15)
-	y: u8 = (12)
+	y: u8 = x
 	in
-	(succ x)
+	(succ y)
 )
