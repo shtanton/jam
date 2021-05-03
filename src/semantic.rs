@@ -3,6 +3,7 @@ use crate::smt::translate_judgement_to_smt;
 use crate::syntax::{
     Constant, Expression as SExpression, Predicate, Proposition as SProposition, Type as SType,
 };
+use crate::thunk::to_thunk;
 use crate::to_z3::{run_smt, SmtResult};
 use im::{hashmap as im_hashmap, HashMap as ImHashMap, Vector as ImVec};
 use std::collections::HashMap;
@@ -206,6 +207,24 @@ impl PartialEq for UnrefinedType {
 }
 
 impl Eq for UnrefinedType {}
+
+impl UnrefinedType {
+    pub fn refine(self, ident_gen: &mut IdentifierGenerator) -> Type {
+        match self {
+            UnrefinedType::One => Type::One,
+            UnrefinedType::Bool => Type::Bool,
+            UnrefinedType::U8 => Type::U8,
+            UnrefinedType::Product(contents) => Type::Product(
+                ident_gen.next(),
+                Box::new((contents.0.refine(ident_gen), contents.1.refine(ident_gen))),
+            ),
+            UnrefinedType::Function(contents) => Type::Function(
+                ident_gen.next(),
+                Box::new((contents.0.refine(ident_gen), contents.1.refine(ident_gen))),
+            ),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct Variable {
@@ -812,7 +831,6 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
         .map_err(|_| "error generating smt program".to_string())?;
     for (i, smt) in smt_programs.into_iter().enumerate() {
         println!("Program {}:", i);
-        //println!("{}", smt);
         match run_smt(smt).map_err(|_| "error running SMT solver".to_string())? {
             SmtResult::Pass => {
                 println!("PASS");
@@ -823,5 +841,5 @@ pub fn check(ast: SExpression) -> Result<Expression, String> {
             }
         }
     }
-    Ok(ast)
+    Ok(to_thunk(ast, &mut analyzer.ident_gen))
 }

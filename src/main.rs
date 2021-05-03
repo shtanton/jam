@@ -6,6 +6,7 @@ mod lambda_lift;
 mod semantic;
 mod smt;
 mod syntax;
+mod thunk;
 mod to_z3;
 
 use std::env;

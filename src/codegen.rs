@@ -9,8 +9,8 @@ use llvm_sys::core::{
     LLVMBuildStructGEP, LLVMBuildSub, LLVMBuildXor, LLVMConstInt, LLVMConstNamedStruct,
     LLVMConstNull, LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose,
     LLVMCreateBuilderInContext, LLVMCreateStringAttribute, LLVMDisposeBuilder, LLVMDisposeModule,
-    LLVMDumpModule, LLVMDumpValue, LLVMFunctionType, LLVMGetElementAsConstant, LLVMGetParam,
-    LLVMGetUndef, LLVMIntTypeInContext, LLVMModuleCreateWithName, LLVMPointerType,
+    LLVMDumpModule, LLVMDumpType, LLVMDumpValue, LLVMFunctionType, LLVMGetElementAsConstant,
+    LLVMGetParam, LLVMGetUndef, LLVMIntTypeInContext, LLVMModuleCreateWithName, LLVMPointerType,
     LLVMPositionBuilderAtEnd, LLVMSetTarget, LLVMStructTypeInContext, LLVMVoidTypeInContext,
 };
 use llvm_sys::{LLVMBuilder, LLVMContext, LLVMModule, LLVMType, LLVMValue};
@@ -47,7 +47,7 @@ impl CodeGen {
 
     fn get_type_size(&self, typ: &UnrefinedType) -> u64 {
         match typ {
-            UnrefinedType::One => 0,
+            UnrefinedType::One => 1,
             UnrefinedType::Bool => 1,
             UnrefinedType::U8 => 1,
             UnrefinedType::Product(contents) => {
@@ -79,7 +79,7 @@ impl CodeGen {
 
     unsafe fn get_type(&self, typ: &UnrefinedType) -> Result<*mut LLVMType, ()> {
         Ok(match typ {
-            UnrefinedType::One => LLVMVoidTypeInContext(self.context),
+            UnrefinedType::One => LLVMIntTypeInContext(self.context, 8),
             UnrefinedType::Bool => LLVMIntTypeInContext(self.context, 8),
             UnrefinedType::U8 => LLVMIntTypeInContext(self.context, 8),
             UnrefinedType::Product(contents) => LLVMStructTypeInContext(
@@ -249,7 +249,7 @@ impl CodeGen {
                     c_str!("apply"),
                 )
             }
-            ExpressionKind::Ast => LLVMConstNull(self.get_type(&expr.typ)?),
+            ExpressionKind::Ast => LLVMConstInt(self.get_type(&expr.typ)?, 0, 0),
             ExpressionKind::Tuple(contents) => {
                 let (first, second) = *contents;
                 let first = self.gen_expr(first, builder)?;
@@ -262,7 +262,7 @@ impl CodeGen {
             ExpressionKind::Second(arg) => {
                 LLVMBuildExtractValue(builder, self.gen_expr(*arg, builder)?, 1, c_str!("first"))
             }
-            ExpressionKind::U8Rec(_, _, _) => LLVMConstNull(self.get_type(&expr.typ)?),
+            ExpressionKind::U8Rec(_, _, contents) => {}
         })
     }
 }
@@ -272,9 +272,6 @@ pub fn codegen(ast: Expression, file: *const i8) {
         let context = LLVMContextCreate();
         let module = LLVMModuleCreateWithName(c_str!("main"));
         let builder = LLVMCreateBuilderInContext(context);
-
-        //let puts_func_type = LLVMFunctionType(i32_type, [i8_pointer_type].as_ptr() as *mut _, 1, 0);
-        //let puts_func = LLVMAddFunction(module, c_str!("puts"), puts_func_type);
 
         let gc_init_type = LLVMFunctionType(LLVMVoidTypeInContext(context), ptr::null_mut(), 0, 0);
         let gc_init = LLVMAddFunction(module, c_str!("GC_init"), gc_init_type);
@@ -301,12 +298,8 @@ pub fn codegen(ast: Expression, file: *const i8) {
         let main_block = LLVMAppendBasicBlockInContext(context, main_func, c_str!("main"));
         LLVMPositionBuilderAtEnd(builder, main_block);
         LLVMBuildCall(builder, gc_init, ptr::null_mut(), 0, c_str!(""));
-        //let variables = crate::stdlib::stdlib_vars(&codegen, builder);
 
-        //let hello_world_str = LLVMBuildGlobalStringPtr(builder, c_str!("hello world"), c_str!(""));
-        //LLVMBuildCall(builder, puts_func, [hello_world_str].as_ptr() as *mut _, 1, c_str!(""));
         LLVMBuildRet(builder, codegen.gen_expr(ast, builder).unwrap());
-        println!("generated");
 
         LLVMSetTarget(module, c_str!("x86_64-pc-linux-gnu"));
         LLVMDumpModule(module);
