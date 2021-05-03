@@ -116,6 +116,33 @@ pub struct Expression {
     pub env: ImHashMap<Identifier, UnrefinedType>,
 }
 
+impl fmt::Display for Expression {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match &self.kind {
+            ExpressionKind::Ast => write!(fmt, "*")?,
+            ExpressionKind::Variable(id) => write!(fmt, "x{}", id)?,
+            ExpressionKind::Call(constant, args) => {
+                write!(fmt, "({}", constant)?;
+                for arg in args.iter() {
+                    write!(fmt, " {}", arg)?;
+                }
+                write!(fmt, ")")?;
+            },
+            ExpressionKind::Tuple(contents) => {
+                write!(fmt, "<{} {}>", &contents.0, &contents.1)?;
+            },
+            ExpressionKind::Abstraction(id, _, body) => {
+                write!(fmt, "(fn x{} {})", id, body)?;
+            },
+            ExpressionKind::Application(contents) => write!(fmt, "({} {})", &contents.0, &contents.1)?,
+            ExpressionKind::First(arg) => write!(fmt, "(first {})", arg)?,
+            ExpressionKind::Second(arg) => write!(fmt, "(second {})", arg)?,
+            ExpressionKind::U8Rec(_, _, contents) => write!(fmt, "(u8rec {} {} {})", &contents.0, &contents.1, &contents.2)?,
+        };
+        Ok(())
+    }
+}
+
 impl Expression {
     pub fn substitute(
         &mut self,

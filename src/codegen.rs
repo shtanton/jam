@@ -12,8 +12,9 @@ use llvm_sys::core::{
     LLVMDumpModule, LLVMDumpType, LLVMDumpValue, LLVMFunctionType, LLVMGetElementAsConstant,
     LLVMGetParam, LLVMGetUndef, LLVMIntTypeInContext, LLVMModuleCreateWithName, LLVMPointerType,
     LLVMPositionBuilderAtEnd, LLVMSetTarget, LLVMStructTypeInContext, LLVMVoidTypeInContext,
+    LLVMBuildBr, LLVMBuildPhi, LLVMAddIncoming, LLVMBuildCondBr, LLVMBuildICmp,
 };
-use llvm_sys::{LLVMBuilder, LLVMContext, LLVMModule, LLVMType, LLVMValue};
+use llvm_sys::{LLVMBuilder, LLVMContext, LLVMModule, LLVMType, LLVMValue, LLVMIntPredicate};
 use std::ptr;
 
 macro_rules! c_str {
@@ -24,6 +25,7 @@ macro_rules! c_str {
 
 struct CodeGen {
     env: HashMap<Identifier, *mut LLVMValue>,
+    fun: *mut LLVMValue,
     pub module: *mut LLVMModule,
     pub context: *mut LLVMContext,
     pub malloc: *mut LLVMValue,
@@ -168,6 +170,7 @@ impl CodeGen {
             },
             ExpressionKind::Variable(id) => self.get_variable(id).ok_or(())?,
             ExpressionKind::Abstraction(id, _, body) => {
+                println!("Function type: {}", expr.typ);
                 let fun_type = self.get_function_type(&expr.typ)?;
                 let env_vec = expr.env.into_iter().collect::<Vec<_>>();
                 let env_size = env_vec
@@ -199,6 +202,7 @@ impl CodeGen {
                 let param = LLVMGetParam(func, 1);
                 self.register_variable(id, param);
                 let old_env = self.env.clone();
+                let old_fun = self.fun;
                 for (i, (id, _)) in env_vec.iter().enumerate() {
                     let env_var_ptr = LLVMBuildStructGEP(
                         func_builder,
@@ -209,8 +213,10 @@ impl CodeGen {
                     let env_var = LLVMBuildLoad(func_builder, env_var_ptr, c_str!("env_var"));
                     self.register_variable(*id, env_var);
                 }
+                self.fun = func;
                 let body = self.gen_expr(*body, func_builder)?;
                 self.env = old_env;
+                self.fun = old_fun;
                 LLVMBuildRet(func_builder, body);
                 LLVMDisposeBuilder(func_builder);
                 let untyped_env_ptr = self.build_malloc(builder, env_size);
@@ -227,7 +233,12 @@ impl CodeGen {
                         LLVMBuildStructGEP(builder, env_ptr, (i + 1) as u32, c_str!("env_env_ptr"));
                     LLVMBuildStore(builder, self.get_variable(*id).ok_or(())?, env_env_ptr);
                 }
-                env_ptr
+                LLVMBuildBitCast(
+                    builder,
+                    env_ptr,
+                    self.get_type(&expr.typ)?,
+                    c_str!("fn_env"),
+                )
             }
             ExpressionKind::Application(contents) => {
                 let (fun, arg) = *contents;
@@ -262,12 +273,80 @@ impl CodeGen {
             ExpressionKind::Second(arg) => {
                 LLVMBuildExtractValue(builder, self.gen_expr(*arg, builder)?, 1, c_str!("first"))
             }
-            ExpressionKind::U8Rec(_, _, contents) => {}
+            ExpressionKind::U8Rec(_, _, contents) => {
+                let entry = LLVMAppendBasicBlockInContext(
+                    self.context,
+                    self.fun,
+                    c_str!("u8rec_entry"),
+                );
+                let header = LLVMAppendBasicBlockInContext(
+                    self.context,
+                    self.fun,
+                    c_str!("u8rec_header"),
+                );
+                let exit = LLVMAppendBasicBlockInContext(
+                    self.context,
+                    self.fun,
+                    c_str!("u8rec_exit"),
+                );
+                LLVMBuildBr(builder, entry);
+                LLVMPositionBuilderAtEnd(builder, entry);
+                let initial_count = self.gen_expr(contents.2, builder)?;
+                let acc_type = self.get_type(&contents.0.typ)?;
+                let initial_acc = self.gen_expr(contents.0, builder)?;
+                LLVMBuildBr(builder, header);
+                LLVMPositionBuilderAtEnd(builder, header);
+                let prev_count = LLVMBuildPhi(
+                    builder,
+                    LLVMIntTypeInContext(self.context, 8),
+                    c_str!("prev_count"),
+                );
+                let prev_acc = LLVMBuildPhi(
+                    builder,
+                    acc_type,
+                    c_str!("prev_acc"),
+                );
+                let prev_count_is_zero = LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    prev_count,
+                    LLVMConstInt(LLVMIntTypeInContext(self.context, 8), 0, 0),
+                    c_str!("prev_count_is_zero"),
+                );
+                let count = LLVMBuildSub(
+                    builder,
+                    prev_count,
+                    LLVMConstInt(LLVMIntTypeInContext(self.context, 8), 1, 0),
+                    c_str!("count"),
+                );
+                LLVMBuildCondBr(
+                    builder,
+                    prev_count_is_zero,
+                    exit,
+                    header,
+                );
+                LLVMAddIncoming(
+                    prev_count,
+                    [initial_count, count].as_ptr() as *mut _,
+                    [entry, header].as_ptr() as *mut _,
+                    2,
+                );
+                LLVMAddIncoming(
+                    prev_acc,
+                    [initial_acc].as_ptr() as *mut _,
+                    [entry].as_ptr() as *mut _,
+                    1,
+                );
+                LLVMPositionBuilderAtEnd(builder, exit);
+                LLVMConstInt(LLVMIntTypeInContext(self.context, 8), 0, 0)
+            }
         })
     }
 }
 
 pub fn codegen(ast: Expression, file: *const i8) {
+    println!("Code:\n{}", ast);
+    //println!("Code again:\n{:#?}", ast);
     unsafe {
         let context = LLVMContextCreate();
         let module = LLVMModuleCreateWithName(c_str!("main"));
@@ -285,19 +364,20 @@ pub fn codegen(ast: Expression, file: *const i8) {
         let noalias = LLVMCreateStringAttribute(context, c_str!("noalias"), 7, c_str!(""), 0);
         LLVMAddAttributeAtIndex(malloc, 0, noalias);
 
-        let mut codegen = CodeGen {
-            env: HashMap::new(),
-            module,
-            context,
-            malloc,
-        };
-
         let main_func_type =
             LLVMFunctionType(LLVMIntTypeInContext(context, 8), ptr::null_mut(), 0, 0);
         let main_func = LLVMAddFunction(module, c_str!("main"), main_func_type);
         let main_block = LLVMAppendBasicBlockInContext(context, main_func, c_str!("main"));
         LLVMPositionBuilderAtEnd(builder, main_block);
         LLVMBuildCall(builder, gc_init, ptr::null_mut(), 0, c_str!(""));
+
+        let mut codegen = CodeGen {
+            env: HashMap::new(),
+            fun: main_func,
+            module,
+            context,
+            malloc,
+        };
 
         LLVMBuildRet(builder, codegen.gen_expr(ast, builder).unwrap());
 

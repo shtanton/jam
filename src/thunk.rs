@@ -57,7 +57,7 @@ impl<'a> Thunker<'a> {
                 let arg = self.thunk_expression(arg);
                 let thunk = Expression {
                     env: arg.env.clone(),
-                    typ: thunk_type(arg.typ.clone()),
+                    typ: UnrefinedType::Function(Box::new((UnrefinedType::One, arg.typ.clone()))),
                     kind: ExpressionKind::Abstraction(self.next_id(), Type::One, Box::new(arg)),
                 };
                 ExpressionKind::Application(Box::new((fun, thunk)))
@@ -86,7 +86,7 @@ impl<'a> Thunker<'a> {
             ))),
             ExpressionKind::U8Rec(id, typ, contents) => ExpressionKind::U8Rec(
                 id,
-                typ,
+                thunk_function_types(typ.unrefine()).refine(self.ident_gen),
                 Box::new((
                     self.thunk_expression(contents.0),
                     self.thunk_expression(contents.1),
@@ -100,6 +100,7 @@ impl<'a> Thunker<'a> {
 }
 
 pub fn to_thunk(source: Expression, ident_gen: &mut IdentifierGenerator) -> Expression {
+    println!("Pre thunk:\n{}", source);
     let mut thunker = Thunker { ident_gen };
     thunker.thunk_expression(source)
 }
