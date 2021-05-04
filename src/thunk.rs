@@ -100,7 +100,6 @@ impl<'a> Thunker<'a> {
 }
 
 pub fn to_thunk(source: Expression, ident_gen: &mut IdentifierGenerator) -> Expression {
-    println!("Pre thunk:\n{}", source);
     let mut thunker = Thunker { ident_gen };
     thunker.thunk_expression(source)
 }

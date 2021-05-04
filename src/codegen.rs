@@ -1,20 +1,18 @@
 use crate::semantic::{Expression, ExpressionKind, Identifier, UnrefinedType};
 use crate::syntax::Constant;
-use im::HashMap;
+use im::HashMap as ImHashMap;
 use llvm_sys::bit_writer::LLVMWriteBitcodeToFile;
 use llvm_sys::core::{
-    LLVMAddAttributeAtIndex, LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMBuildAdd,
-    LLVMBuildAnd, LLVMBuildBitCast, LLVMBuildCall, LLVMBuildExtractValue, LLVMBuildGEP,
-    LLVMBuildInsertValue, LLVMBuildLoad, LLVMBuildNot, LLVMBuildOr, LLVMBuildRet, LLVMBuildStore,
-    LLVMBuildStructGEP, LLVMBuildSub, LLVMBuildXor, LLVMConstInt, LLVMConstNamedStruct,
-    LLVMConstNull, LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose,
-    LLVMCreateBuilderInContext, LLVMCreateStringAttribute, LLVMDisposeBuilder, LLVMDisposeModule,
-    LLVMDumpModule, LLVMDumpType, LLVMDumpValue, LLVMFunctionType, LLVMGetElementAsConstant,
-    LLVMGetParam, LLVMGetUndef, LLVMIntTypeInContext, LLVMModuleCreateWithName, LLVMPointerType,
+    LLVMAddAttributeAtIndex, LLVMAddFunction, LLVMAddIncoming, LLVMAppendBasicBlockInContext,
+    LLVMBuildAdd, LLVMBuildAnd, LLVMBuildBitCast, LLVMBuildBr, LLVMBuildCall, LLVMBuildCondBr,
+    LLVMBuildExtractValue, LLVMBuildICmp, LLVMBuildLoad, LLVMBuildNot, LLVMBuildOr, LLVMBuildPhi,
+    LLVMBuildRet, LLVMBuildStore, LLVMBuildStructGEP, LLVMBuildSub, LLVMBuildXor, LLVMConstInt,
+    LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext,
+    LLVMCreateStringAttribute, LLVMDisposeBuilder, LLVMDisposeModule, LLVMFunctionType,
+    LLVMGetParam, LLVMIntTypeInContext, LLVMModuleCreateWithName, LLVMPointerType,
     LLVMPositionBuilderAtEnd, LLVMSetTarget, LLVMStructTypeInContext, LLVMVoidTypeInContext,
-    LLVMBuildBr, LLVMBuildPhi, LLVMAddIncoming, LLVMBuildCondBr, LLVMBuildICmp,
 };
-use llvm_sys::{LLVMBuilder, LLVMContext, LLVMModule, LLVMType, LLVMValue, LLVMIntPredicate};
+use llvm_sys::{LLVMBuilder, LLVMContext, LLVMIntPredicate, LLVMModule, LLVMType, LLVMValue};
 use std::ptr;
 
 macro_rules! c_str {
@@ -24,7 +22,7 @@ macro_rules! c_str {
 }
 
 struct CodeGen {
-    env: HashMap<Identifier, *mut LLVMValue>,
+    env: ImHashMap<Identifier, *mut LLVMValue>,
     fun: *mut LLVMValue,
     pub module: *mut LLVMModule,
     pub context: *mut LLVMContext,
@@ -32,6 +30,126 @@ struct CodeGen {
 }
 
 impl CodeGen {
+    unsafe fn thunk_type(&mut self, typ: *mut LLVMType) -> *mut LLVMType {
+        LLVMPointerType(
+            LLVMStructTypeInContext(
+                self.context,
+                [LLVMPointerType(
+                    LLVMFunctionType(
+                        typ,
+                        [
+                            LLVMPointerType(LLVMIntTypeInContext(self.context, 8), 0),
+                            LLVMIntTypeInContext(self.context, 8),
+                        ]
+                        .as_ptr() as *mut _,
+                        2,
+                        0,
+                    ),
+                    0,
+                )]
+                .as_ptr() as *mut _,
+                1,
+                0,
+            ),
+            0,
+        )
+    }
+
+    unsafe fn gen_env_type(
+        &mut self,
+        fun_type: *mut LLVMType,
+        mut env_type_env_members: Vec<*mut LLVMType>,
+    ) -> *mut LLVMType {
+        let mut env_type_members = vec![LLVMPointerType(fun_type, 0)];
+        env_type_members.append(&mut env_type_env_members);
+        let env_type = LLVMStructTypeInContext(
+            self.context,
+            env_type_members.as_ptr() as *mut _,
+            env_type_members.len() as u32,
+            0,
+        );
+        env_type
+    }
+
+    unsafe fn build_closure(
+        &mut self,
+        builder: *mut LLVMBuilder,
+        typ: &UnrefinedType,
+        env_vars: Vec<(*mut LLVMType, *mut LLVMValue, u64)>,
+        body: impl FnOnce(
+            &mut CodeGen,
+            *mut LLVMBuilder,
+            *mut LLVMValue,
+            *mut LLVMValue,
+        ) -> Result<*mut LLVMValue, ()>,
+    ) -> Result<*mut LLVMValue, ()> {
+        let fun_type = self.get_function_type(typ)?;
+        let env_size = env_vars.iter().fold(8, |acc, (_, _, size)| acc + size);
+        let env_type_env_members = env_vars.iter().map(|(typ, _, _)| *typ).collect::<Vec<_>>();
+        let env_type = self.gen_env_type(fun_type, env_type_env_members);
+        let func = LLVMAddFunction(self.module, c_str!("fn"), fun_type);
+        let block = LLVMAppendBasicBlockInContext(self.context, func, c_str!("fn_block"));
+        let func_builder = LLVMCreateBuilderInContext(self.context);
+        LLVMPositionBuilderAtEnd(func_builder, block);
+        let untyped_env_param = LLVMGetParam(func, 0);
+        let env_param = LLVMBuildBitCast(
+            func_builder,
+            untyped_env_param,
+            LLVMPointerType(env_type, 0),
+            c_str!("env"),
+        );
+        let param = LLVMGetParam(func, 1);
+        let old_fun = self.fun;
+        self.fun = func;
+        let body = body(self, func_builder, env_param, param)?;
+        self.fun = old_fun;
+        LLVMBuildRet(func_builder, body);
+        LLVMDisposeBuilder(func_builder);
+        let untyped_env_ptr = self.build_malloc(builder, env_size);
+        let env_ptr = LLVMBuildBitCast(
+            builder,
+            untyped_env_ptr,
+            LLVMPointerType(env_type, 0),
+            c_str!("env"),
+        );
+        let env_fun_ptr = LLVMBuildStructGEP(builder, env_ptr, 0, c_str!("env_func_ptr"));
+        LLVMBuildStore(builder, func, env_fun_ptr);
+        for (i, (_, value, _)) in env_vars.iter().enumerate() {
+            let env_env_ptr =
+                LLVMBuildStructGEP(builder, env_ptr, (i + 1) as u32, c_str!("env_env_ptr"));
+            LLVMBuildStore(builder, *value, env_env_ptr);
+        }
+        Ok(LLVMBuildBitCast(
+            builder,
+            env_ptr,
+            self.get_type(typ)?,
+            c_str!("fn_env"),
+        ))
+    }
+
+    unsafe fn build_application(
+        &mut self,
+        builder: *mut LLVMBuilder,
+        closure: *mut LLVMValue,
+        arg: *mut LLVMValue,
+    ) -> *mut LLVMValue {
+        let fun_ptr = LLVMBuildStructGEP(builder, closure, 0, c_str!("fun_ptr"));
+        let fun = LLVMBuildLoad(builder, fun_ptr, c_str!("fun"));
+        let untyped_closure = LLVMBuildBitCast(
+            builder,
+            closure,
+            LLVMPointerType(LLVMIntTypeInContext(self.context, 8), 0),
+            c_str!("untyped_closure"),
+        );
+        LLVMBuildCall(
+            builder,
+            fun,
+            [untyped_closure, arg].as_ptr() as *mut _,
+            2,
+            c_str!("apply"),
+        )
+    }
+
     unsafe fn build_malloc(&self, builder: *mut LLVMBuilder, size: u64) -> *mut LLVMValue {
         LLVMBuildCall(
             builder,
@@ -170,95 +288,47 @@ impl CodeGen {
             },
             ExpressionKind::Variable(id) => self.get_variable(id).ok_or(())?,
             ExpressionKind::Abstraction(id, _, body) => {
-                println!("Function type: {}", expr.typ);
-                let fun_type = self.get_function_type(&expr.typ)?;
                 let env_vec = expr.env.into_iter().collect::<Vec<_>>();
-                let env_size = env_vec
-                    .iter()
-                    .fold(8, |size, (_, typ)| size + self.get_type_size(typ));
-                let mut env_type_env_members = env_vec
-                    .iter()
-                    .map(|(_, typ)| self.get_type(&typ))
+                let env_ids = env_vec.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+                let env_vars = env_vec
+                    .into_iter()
+                    .map(|(id, typ)| {
+                        Ok((
+                            self.get_type(&typ)?,
+                            self.get_variable(id).ok_or(())?,
+                            self.get_type_size(&typ),
+                        ))
+                    })
                     .collect::<Result<Vec<_>, ()>>()?;
-                let mut env_type_members = vec![LLVMPointerType(fun_type, 0)];
-                env_type_members.append(&mut env_type_env_members);
-                let env_type = LLVMStructTypeInContext(
-                    self.context,
-                    env_type_members.as_ptr() as *mut _,
-                    env_type_members.len() as u32,
-                    0,
-                );
-                let func = LLVMAddFunction(self.module, c_str!("fn"), fun_type);
-                let block = LLVMAppendBasicBlockInContext(self.context, func, c_str!("fn_block"));
-                let func_builder = LLVMCreateBuilderInContext(self.context);
-                LLVMPositionBuilderAtEnd(func_builder, block);
-                let untyped_env_param = LLVMGetParam(func, 0);
-                let env_param = LLVMBuildBitCast(
-                    func_builder,
-                    untyped_env_param,
-                    LLVMPointerType(env_type, 0),
-                    c_str!("env"),
-                );
-                let param = LLVMGetParam(func, 1);
-                self.register_variable(id, param);
-                let old_env = self.env.clone();
-                let old_fun = self.fun;
-                for (i, (id, _)) in env_vec.iter().enumerate() {
-                    let env_var_ptr = LLVMBuildStructGEP(
-                        func_builder,
-                        env_param,
-                        (i + 1) as u32,
-                        c_str!("env_var_ptr"),
-                    );
-                    let env_var = LLVMBuildLoad(func_builder, env_var_ptr, c_str!("env_var"));
-                    self.register_variable(*id, env_var);
-                }
-                self.fun = func;
-                let body = self.gen_expr(*body, func_builder)?;
-                self.env = old_env;
-                self.fun = old_fun;
-                LLVMBuildRet(func_builder, body);
-                LLVMDisposeBuilder(func_builder);
-                let untyped_env_ptr = self.build_malloc(builder, env_size);
-                let env_ptr = LLVMBuildBitCast(
+                self.build_closure(
                     builder,
-                    untyped_env_ptr,
-                    LLVMPointerType(env_type, 0),
-                    c_str!("env"),
-                );
-                let env_func_ptr = LLVMBuildStructGEP(builder, env_ptr, 0, c_str!("env_func_ptr"));
-                LLVMBuildStore(builder, func, env_func_ptr);
-                for (i, (id, _)) in env_vec.iter().enumerate() {
-                    let env_env_ptr =
-                        LLVMBuildStructGEP(builder, env_ptr, (i + 1) as u32, c_str!("env_env_ptr"));
-                    LLVMBuildStore(builder, self.get_variable(*id).ok_or(())?, env_env_ptr);
-                }
-                LLVMBuildBitCast(
-                    builder,
-                    env_ptr,
-                    self.get_type(&expr.typ)?,
-                    c_str!("fn_env"),
-                )
+                    &expr.typ,
+                    env_vars,
+                    |this, func_builder, env_param, param| {
+                        this.register_variable(id, param);
+                        let old_env = this.env.clone();
+                        for (i, id) in env_ids.into_iter().enumerate() {
+                            let env_var_ptr = LLVMBuildStructGEP(
+                                func_builder,
+                                env_param,
+                                (i + 1) as u32,
+                                c_str!("env_var_ptr"),
+                            );
+                            let env_var =
+                                LLVMBuildLoad(func_builder, env_var_ptr, c_str!("env_var"));
+                            this.register_variable(id, env_var);
+                        }
+                        let body = this.gen_expr(*body, func_builder)?;
+                        this.env = old_env;
+                        Ok(body)
+                    },
+                )?
             }
             ExpressionKind::Application(contents) => {
                 let (fun, arg) = *contents;
-                let env = self.gen_expr(fun, builder)?;
+                let closure = self.gen_expr(fun, builder)?;
                 let arg = self.gen_expr(arg, builder)?;
-                let fun_ptr = LLVMBuildStructGEP(builder, env, 0, c_str!("env_fun_ptr"));
-                let fun = LLVMBuildLoad(builder, fun_ptr, c_str!("env_fun"));
-                let untyped_env = LLVMBuildBitCast(
-                    builder,
-                    env,
-                    LLVMPointerType(LLVMIntTypeInContext(self.context, 8), 0),
-                    c_str!("untyped_env"),
-                );
-                LLVMBuildCall(
-                    builder,
-                    fun,
-                    [untyped_env, arg].as_ptr() as *mut _,
-                    2,
-                    c_str!("apply"),
-                )
+                self.build_application(builder, closure, arg)
             }
             ExpressionKind::Ast => LLVMConstInt(self.get_type(&expr.typ)?, 0, 0),
             ExpressionKind::Tuple(contents) => {
@@ -274,26 +344,57 @@ impl CodeGen {
                 LLVMBuildExtractValue(builder, self.gen_expr(*arg, builder)?, 1, c_str!("first"))
             }
             ExpressionKind::U8Rec(_, _, contents) => {
-                let entry = LLVMAppendBasicBlockInContext(
-                    self.context,
-                    self.fun,
-                    c_str!("u8rec_entry"),
-                );
-                let header = LLVMAppendBasicBlockInContext(
-                    self.context,
-                    self.fun,
-                    c_str!("u8rec_header"),
-                );
-                let exit = LLVMAppendBasicBlockInContext(
-                    self.context,
-                    self.fun,
-                    c_str!("u8rec_exit"),
-                );
+                let entry =
+                    LLVMAppendBasicBlockInContext(self.context, self.fun, c_str!("u8rec_entry"));
+                let header =
+                    LLVMAppendBasicBlockInContext(self.context, self.fun, c_str!("u8rec_header"));
+                let body =
+                    LLVMAppendBasicBlockInContext(self.context, self.fun, c_str!("u8rec_body"));
+                let exit =
+                    LLVMAppendBasicBlockInContext(self.context, self.fun, c_str!("u8rec_exit"));
                 LLVMBuildBr(builder, entry);
                 LLVMPositionBuilderAtEnd(builder, entry);
-                let initial_count = self.gen_expr(contents.2, builder)?;
-                let acc_type = self.get_type(&contents.0.typ)?;
-                let initial_acc = self.gen_expr(contents.0, builder)?;
+                let (init_expr, iter_expr, count_expr) = *contents;
+                let initial_count = self.gen_expr(count_expr, builder)?;
+                let acc_type = init_expr.typ.clone();
+                let llvm_acc_type = self.get_type(&acc_type)?;
+                let acc_thunk_type = self.thunk_type(llvm_acc_type);
+                let initial_acc_thunk = {
+                    let env_vec = init_expr.env.clone().into_iter().collect::<Vec<_>>();
+                    let env_ids = env_vec.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+                    let env_vars = env_vec
+                        .into_iter()
+                        .map(|(id, typ)| {
+                            Ok((
+                                self.get_type(&typ)?,
+                                self.get_variable(id).ok_or(())?,
+                                self.get_type_size(&typ),
+                            ))
+                        })
+                        .collect::<Result<Vec<_>, ()>>()?;
+                    self.build_closure(
+                        builder,
+                        &UnrefinedType::Function(Box::new((UnrefinedType::One, acc_type.clone()))),
+                        env_vars,
+                        |this, func_builder, env_param, _| {
+                            let old_env = this.env.clone();
+                            for (i, id) in env_ids.into_iter().enumerate() {
+                                let env_var_ptr = LLVMBuildStructGEP(
+                                    func_builder,
+                                    env_param,
+                                    (i + 1) as u32,
+                                    c_str!("env_var_ptr"),
+                                );
+                                let env_var =
+                                    LLVMBuildLoad(func_builder, env_var_ptr, c_str!("env_var"));
+                                this.register_variable(id, env_var);
+                            }
+                            let body = this.gen_expr(init_expr, func_builder)?;
+                            this.env = old_env;
+                            Ok(body)
+                        },
+                    )?
+                };
                 LLVMBuildBr(builder, header);
                 LLVMPositionBuilderAtEnd(builder, header);
                 let prev_count = LLVMBuildPhi(
@@ -301,11 +402,7 @@ impl CodeGen {
                     LLVMIntTypeInContext(self.context, 8),
                     c_str!("prev_count"),
                 );
-                let prev_acc = LLVMBuildPhi(
-                    builder,
-                    acc_type,
-                    c_str!("prev_acc"),
-                );
+                let prev_acc_thunk = LLVMBuildPhi(builder, acc_thunk_type, c_str!("prev_acc"));
                 let prev_count_is_zero = LLVMBuildICmp(
                     builder,
                     LLVMIntPredicate::LLVMIntEQ,
@@ -313,40 +410,116 @@ impl CodeGen {
                     LLVMConstInt(LLVMIntTypeInContext(self.context, 8), 0, 0),
                     c_str!("prev_count_is_zero"),
                 );
+                LLVMBuildCondBr(builder, prev_count_is_zero, exit, body);
+                LLVMPositionBuilderAtEnd(builder, body);
                 let count = LLVMBuildSub(
                     builder,
                     prev_count,
                     LLVMConstInt(LLVMIntTypeInContext(self.context, 8), 1, 0),
                     c_str!("count"),
                 );
-                LLVMBuildCondBr(
-                    builder,
-                    prev_count_is_zero,
-                    exit,
-                    header,
-                );
                 LLVMAddIncoming(
                     prev_count,
                     [initial_count, count].as_ptr() as *mut _,
-                    [entry, header].as_ptr() as *mut _,
+                    [entry, body].as_ptr() as *mut _,
                     2,
                 );
+                let count_thunk_type = self.thunk_type(LLVMIntTypeInContext(self.context, 8));
+                let count_thunk = {
+                    self.build_closure(
+                        builder,
+                        &UnrefinedType::Function(Box::new((UnrefinedType::One, UnrefinedType::U8))),
+                        vec![(LLVMIntTypeInContext(self.context, 8), count, 1)],
+                        |_, func_builder, env_param, _| {
+                            let count_ptr =
+                                LLVMBuildStructGEP(func_builder, env_param, 1, c_str!("count_ptr"));
+                            let count = LLVMBuildLoad(func_builder, count_ptr, c_str!("count"));
+                            Ok(count)
+                        },
+                    )?
+                };
+                let acc_thunk = {
+                    let iter_env_vec = iter_expr.env.clone().into_iter().collect::<Vec<_>>();
+                    let iter_env_ids = iter_env_vec.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+                    let iter_env_vars = iter_env_vec.into_iter().map(|(id, typ)| {
+                        Ok((
+                            self.get_type(&typ)?,
+                            self.get_variable(id).ok_or(())?,
+                            self.get_type_size(&typ),
+                        ))
+                    });
+                    let env_vars = vec![
+                        Ok((acc_thunk_type, prev_acc_thunk, 8)),
+                        Ok((count_thunk_type, count_thunk, 8)),
+                    ]
+                    .into_iter()
+                    .chain(iter_env_vars)
+                    .collect::<Result<Vec<_>, ()>>()?;
+                    self.build_closure(
+                        builder,
+                        &UnrefinedType::Function(Box::new((UnrefinedType::One, acc_type))),
+                        env_vars,
+                        |this, func_builder, env_param, _| {
+                            let acc_thunk_ptr = LLVMBuildStructGEP(
+                                func_builder,
+                                env_param,
+                                1,
+                                c_str!("acc_thunk_ptr"),
+                            );
+                            let acc_thunk =
+                                LLVMBuildLoad(func_builder, acc_thunk_ptr, c_str!("acc_thunk"));
+                            let count_thunk_ptr = LLVMBuildStructGEP(
+                                func_builder,
+                                env_param,
+                                2,
+                                c_str!("count_thunk_ptr"),
+                            );
+                            let count_thunk =
+                                LLVMBuildLoad(func_builder, count_thunk_ptr, c_str!("count_thunk"));
+                            let old_env = this.env.clone();
+                            for (i, id) in iter_env_ids.iter().enumerate() {
+                                let env_var_ptr = LLVMBuildStructGEP(
+                                    func_builder,
+                                    env_param,
+                                    (i + 3) as u32,
+                                    c_str!("env_var_ptr"),
+                                );
+                                let env_var =
+                                    LLVMBuildLoad(func_builder, env_var_ptr, c_str!("env_var"));
+                                this.register_variable(*id, env_var);
+                            }
+                            let iter = this.gen_expr(iter_expr, func_builder)?;
+                            this.env = old_env;
+                            let partially_applied_iter =
+                                this.build_application(func_builder, iter, count_thunk);
+                            let fully_applied_iter = this.build_application(
+                                func_builder,
+                                partially_applied_iter,
+                                acc_thunk,
+                            );
+                            Ok(fully_applied_iter)
+                        },
+                    )?
+                };
                 LLVMAddIncoming(
-                    prev_acc,
-                    [initial_acc].as_ptr() as *mut _,
-                    [entry].as_ptr() as *mut _,
-                    1,
+                    prev_acc_thunk,
+                    [initial_acc_thunk, acc_thunk].as_ptr() as *mut _,
+                    [entry, body].as_ptr() as *mut _,
+                    2,
                 );
+                LLVMBuildBr(builder, header);
                 LLVMPositionBuilderAtEnd(builder, exit);
-                LLVMConstInt(LLVMIntTypeInContext(self.context, 8), 0, 0)
+                self.build_application(
+                    builder,
+                    prev_acc_thunk,
+                    LLVMConstInt(LLVMIntTypeInContext(self.context, 8), 0, 0),
+                )
             }
         })
     }
 }
 
 pub fn codegen(ast: Expression, file: *const i8) {
-    println!("Code:\n{}", ast);
-    //println!("Code again:\n{:#?}", ast);
     unsafe {
         let context = LLVMContextCreate();
         let module = LLVMModuleCreateWithName(c_str!("main"));
@@ -372,7 +545,7 @@ pub fn codegen(ast: Expression, file: *const i8) {
         LLVMBuildCall(builder, gc_init, ptr::null_mut(), 0, c_str!(""));
 
         let mut codegen = CodeGen {
-            env: HashMap::new(),
+            env: ImHashMap::new(),
             fun: main_func,
             module,
             context,
@@ -382,7 +555,6 @@ pub fn codegen(ast: Expression, file: *const i8) {
         LLVMBuildRet(builder, codegen.gen_expr(ast, builder).unwrap());
 
         LLVMSetTarget(module, c_str!("x86_64-pc-linux-gnu"));
-        LLVMDumpModule(module);
         LLVMWriteBitcodeToFile(module, file);
 
         LLVMDisposeBuilder(builder);

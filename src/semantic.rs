@@ -127,17 +127,23 @@ impl fmt::Display for Expression {
                     write!(fmt, " {}", arg)?;
                 }
                 write!(fmt, ")")?;
-            },
+            }
             ExpressionKind::Tuple(contents) => {
                 write!(fmt, "<{} {}>", &contents.0, &contents.1)?;
-            },
+            }
             ExpressionKind::Abstraction(id, _, body) => {
                 write!(fmt, "(fn x{} {})", id, body)?;
-            },
-            ExpressionKind::Application(contents) => write!(fmt, "({} {})", &contents.0, &contents.1)?,
+            }
+            ExpressionKind::Application(contents) => {
+                write!(fmt, "({} {})", &contents.0, &contents.1)?
+            }
             ExpressionKind::First(arg) => write!(fmt, "(first {})", arg)?,
             ExpressionKind::Second(arg) => write!(fmt, "(second {})", arg)?,
-            ExpressionKind::U8Rec(_, _, contents) => write!(fmt, "(u8rec {} {} {})", &contents.0, &contents.1, &contents.2)?,
+            ExpressionKind::U8Rec(_, _, contents) => write!(
+                fmt,
+                "(u8rec {} {} {})",
+                &contents.0, &contents.1, &contents.2
+            )?,
         };
         Ok(())
     }
