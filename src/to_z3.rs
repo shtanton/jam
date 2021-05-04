@@ -1,9 +1,7 @@
 use crate::semantic::{Identifier, UnrefinedType};
 use crate::smt::{Expression, Function, Smt};
 use crate::syntax::{Constant, Predicate};
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 use z3::{
     ast::{forall_const, Ast, Bool, Dynamic, BV},
     Config, Context, DatatypeAccessor, DatatypeBuilder, DatatypeSort, DatatypeVariant, FuncDecl,
@@ -15,10 +13,6 @@ pub enum SmtResult {
     Unknown,
     Fail,
 }
-
-struct ConstantDeclarations {}
-
-struct PredicateDeclarations {}
 
 struct PairData<'a> {
     zsort: ZSort<'a>,
@@ -40,8 +34,6 @@ struct Z3Translater<'a> {
     ast: FuncDecl<'a>,
     bool: ZSort<'a>,
     u8: ZSort<'a>,
-    constants: ConstantDeclarations,
-    predicates: PredicateDeclarations,
     variables: HashMap<Identifier, FuncDecl<'a>>,
 }
 
@@ -346,8 +338,6 @@ pub fn run_smt(smt: Smt) -> Result<SmtResult, ()> {
     );
     let bool_zsort = ZSort::bool(&ctx);
     let u8_zsort = ZSort::bitvector(&ctx, 8);
-    let constants = ConstantDeclarations {};
-    let predicates = PredicateDeclarations {};
     let translater = Z3Translater {
         fn_map: HashMap::new(),
         pair_map: HashMap::new(),
@@ -356,8 +346,6 @@ pub fn run_smt(smt: Smt) -> Result<SmtResult, ()> {
         ast: ast_vec.pop().unwrap(),
         bool: bool_zsort,
         u8: u8_zsort,
-        constants,
-        predicates,
         variables: HashMap::new(),
     };
     translater.run_smt(smt)

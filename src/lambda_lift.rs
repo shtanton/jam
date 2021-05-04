@@ -3,7 +3,6 @@ use crate::semantic::{
     Judgement as SJudgement, Proposition as SProposition, Type as SType, UnrefinedType,
 };
 use crate::syntax::{Constant, Predicate};
-use im::vector::Vector as ImVec;
 
 #[derive(Debug)]
 pub struct Judgement {
