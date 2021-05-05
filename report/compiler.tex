@@ -1,0 +1,226 @@
+\section{The Compiler}
+
+\subsection{Compiler Structure}
+
+The compiler is split into several passes, the first generates an abstract syntax tree, while the others
+operate on the tree.
+In total, there are 4 passes (not including type checking or linking, as I don't discuss those here).
+
+\begin{itemize}
+    \item \textbf{Parsing} -
+    Building an AST based on the input string.
+    This is a very standard stage common to almost all compilers, as doing later stages on a syntax tree
+    is substantially easier than trying to work with a string.
+    \item \textbf{Labelling} -
+    Replacing string identifiers for variables with globally unique integer identifiers and
+    labelling every term with data about which variables it depends on and its type.
+    This means the later stages can assume ids are unique, and makes programming environment capture for
+    closures or lambda lifting more straightforward.
+    \item \textbf{Type Checking} -
+    Checking that the labelled AST is valid.
+    This doesn't change the AST in any way, but the compiler won't proceed to the next stages if it fails the
+    type checks.
+    Chapter 2 is focused on the type checker so I don't discuss it any more here.
+    \item \textbf{Thunking} -
+    This is a tiny pass to produce the call-by-name semantics by replacing arguments with thunks.
+    \item \textbf{Code Generation} -
+    Write LLVM bytecode for the program to allow it to be executed.
+    \item \textbf{Linking} -
+    This stage compiles the LLVM IR and links it into a standalone executable.
+    I use the tools \texttt{llc} and \texttt{gcc} for this, and didn't write any code myself so I don't go into
+    any detail on it.
+\end{itemize}
+
+\subsection{Parsing}
+
+I used a Rust library called nom for parsing, which makes use of parser combinators to build the parser.
+The idea is to start with simple parsers such as a fixed string and then use combinators like concatenation,
+or alternation, or repetition, to construct more complex parsers.
+They have a lot in common with regular expressions, but are powerful enough to recognise context free languages
+and can be easily extended with new parsers or combinators.
+
+Figure \ref{fig:let_expression_parser} shows the parser for $let$ expressions.
+\begin{figure}
+    \begin{alltt}
+named!(expression_let(&str) -> Expression, do_parse!(
+  char!('(') >> ws0 >> tag!("let") >> ws1 >>
+  defns: separated_list1!(ws1, definition) >> ws1 >> tag!("in") >> ws1 >>
+  e: expression >> ws0 >> char!(')') >>
+  (\{
+    let mut expr = e;
+    for (id, t, value) in defns.into_iter().rev() \{
+      expr = Expression::Application(
+        Box::new(Expression::Abstraction(id, Box::new(t), Box::new(expr))),
+        Box::new(value),
+      );
+    \}
+    expr
+  \})
+));
+    \end{alltt}
+    \caption{Let Expression Parser}
+    \label{fig:let_expression_parser}
+\end{figure}
+This and most other parsers use the \texttt{do\_parse} combinator to concatenate several parsers together and then
+generate an expression using the values of the individual parsers.
+A subparser that will result in a value I intend on using can be labelled (such as \texttt{defns}) and then in
+the expression for the result of the parser, that result is available as a variable.
+This parser generates the syntactic sugar for the $let...in$ syntax, so each definition is translated into
+an immediately applied abstraction.
+
+Figure \ref{fig:expression_parser} shows the parser for any expression.
+\begin{figure}
+    \begin{alltt}
+named!(expression(&str) -> Expression, alt!(
+  expression_u8rec |
+  expression_let |
+  expression_abstraction |
+  expression_first |
+  expression_second |
+  expression_call |
+  expression_ast |
+  expression_application |
+  expression_variable |
+  expression_tuple
+));
+    \end{alltt}
+    \caption{Expression Parser}
+    \label{fig:expression_parser}
+\end{figure}
+This uses the \texttt{alt} combinator to try parsers in succession until one of them matches.
+Some thought must go into the order of the subparsers as they are tried in order.
+If \texttt{expression\_application} were higher up the list, it would be before \texttt{expression\_call} and
+other similar looking expressions.
+This would mean that any calls to constants were treated as user defined functions being applied, so the
+later stages wouldn't work.
+
+\subsection{Labelling}
+
+While traversing the AST, we keep a record of the types of variables, and the ids of variables that are currently
+in scope.
+This means that each time a variable is referenced, the string identifier can be replaced with the appropriate
+unique integer identifier.
+Also, the (unrefined) type and free variables used for each term can be used by combining
+the information from its subterms.
+Having all the extra information easily available makes the later stages of the compiler much simpler,
+for example, the type checker and code generator both need to the free variables for each abstraction term.
+
+\subsection{Thunking}
+
+This pass does a number of adjustements, with the goal of replacing a arguments, $v$ with abstractions,
+$\lambda x: \textbf{1} . v$.
+There are several other changes that need to take place for the syntax tree to remain consistent under this
+change.
+\begin{itemize}
+    \item References to variables, $v$, must be replaced with applications of the thunk $(v\ \ast)$.
+    \item Types of parameters in abstractions, $T$, must be replaced with thunks, $\textbf{1} \rightarrow T$.
+    \item Types of expressions with function subtypes must have their parameter types changed to thunks.
+    \item Types in free variable sets with function subtypes must have their parameter types changed to thunks.
+\end{itemize}
+This produces an AST which can be evaluated using call-by-value semantics to achieve the same result as
+the original AST evaluated with call-by-name semantics.
+This transformation is based on what's described in Appel's book \cite{appel1998}.
+
+\subsubsection{Thunking In Code Generation}
+
+Originally I had planned to introduce thunks for arguments in the code generation pass.
+While trying to do this, I realised that LLVM IR code for abstractions is challenging, as I need to
+implement closures.
+I wanted to avoid this complexity where possible, so decided to introduce thunks in a new pass before
+code generation, so the code generation for abstractions can be reused to generate the thunks as well.
+
+\subsection{Code Generation}
+
+I chose to use the LLVM toolchain to implement my compiler.
+It is a recently developed intermediate representation language, along with a compiler and interpreter,
+with the goal of being a target for compilation for new languages, which can then be compiled down to
+a wide variety of architectures.
+Using LLVM both reduced the amount of work I needed to do, it does for me:
+\begin{itemize}
+    \item Optimization -
+    Dead code elimination,
+    partial evaluation at compile time,
+    Loop unrolling,
+    Function inlining
+    and many other optimizations are done by the LLVM compiler, which somewhat makes up for the fact that
+    I have done no optimization myself.
+    \item Structures/Records -
+    LLVM has structures as a type, and provides instructions for working with them.
+    \item Functions -
+    Some instruction sets have functions, but LLVM functions are called similarly to high level functions
+    and can take or return large types like structures.
+    \item Targeting Several Platforms -
+    Had I written my compiler to compile straight to assembly for an architecture, code in my language could
+    only have been executed on that hardware.
+    With LLVM my code can be executed on nearly any system.
+\end{itemize}
+I extensively used the LLVM Language Reference Manual \cite{llvm} to determine which LLVM instructions
+would correspond to each of my language constructs.
+For most this was straightforward, all of my constants other than $u8rec$ have obvious representations
+in LLVM, $\ast$ is represented using a null byte, $u8$ and $bool$ are also both bytes with $bool$ using
+$0$ and $1$ as $false$ and $true$ respectively and 2-tuples map well onto LLVM structures.
+
+\subsubsection{Closures}
+
+Abstractions (and applications) were particularly challenging as each function needed to capture its
+environment, so access to variables in outer scopes was possible from within the function.
+I treat a closure as a pointer to a structure on the heap, which has as its first element a pointer
+to the function (which takes the closure as its first parameter and the actual parameter as its second),
+and its remaining elements are copies of variables it needs from its environment.
+This is different to the static link based approach in Appel's book, but is more versatile, as a
+static link becomes invalid once the parent function returns and its stack frame is popped.
+Because my closures can be returned from functions, a child function might outlive its parent by being
+returned and then applied, so it needs a whole copy of the necessary data to prevent any of it being
+missing when it is applied.
+This has the disadvantage that if any of the data changes since the closure is constructed, it is no longer
+correct, however, all state is immutable in my language so this isn't possible.
+
+Because a closure may outlive any function, I chose to allocate it on the heap, which has the added problem
+of cleaning it up by freeing the memory once I'm done with it.
+The most sensible way to solve this problem (and the solution I chose) is to use a garbage collector to do this.
+There is also the problem that since the closure contains a function which takes as an argument the closure,
+the type of the closure is contained within itself so cannot be expressed.
+Fortunately, I can use a byte pointer as the type of the closure in the function parameter, and bitcast it
+before and after passing it.
+Finally there is the problem that 2 closures might have the same type in my language, but due to differences
+in captured variables, have different types in LLVM.
+To get around this, once formed the closures are bitcast into a pointer to a struct containing only the
+function pointer (to allow them to be called), and then inside the function, they are cast back to
+the full environment to access the elements.
+
+An example function written in LLVM bytecode is shown in Figure \ref{fig:closure}.
+\begin{figure}
+    \begin{alltt}
+define \{ i8 (i8*, \{ i8 (i8*, i8)* \}*)* \}* @fn.3(i8* \%0, \{ i8 (i8*, i8)* \}* \%1) \{
+fn_block:
+1 \%env = bitcast i8* \%0 to
+    \{ \{ i8 (i8*, \{ i8 (i8*, i8)* \}*)* \}* (i8*, \{ i8 (i8*, i8)* \}*)* \}*
+2 \%malloc = call i8* @GC_malloc(i64 8)
+3 \%env1 = bitcast i8* \%malloc to \{ i8 (i8*, \{ i8 (i8*, i8)* \}*)* \}*
+4 \%env_func_ptr = getelementptr inbounds \{ i8 (i8*, \{ i8 (i8*, i8)* \}*)* \},
+    \{ i8 (i8*, \{ i8 (i8*, i8)* \}*)* \}* \%env1, i32 0, i32 0
+5 store i8 (i8*, \{ i8 (i8*, i8)* \}*)* @fn.4,
+    i8 (i8*, \{ i8 (i8*, i8)* \}*)** \%env_func_ptr, align 8
+6 ret \{ i8 (i8*, \{ i8 (i8*, i8)* \}*)* \}* \%env1
+\}
+    \end{alltt}
+    \caption{Example Function Using A Closure}
+    \label{fig:closure}
+\end{figure}
+Here is a function which will become a closure that takes a $u8$ and returns a $u8 \rightarrow u8$.
+Line 1 casts the captured variables from its environment into the appropriate type.
+Line 2 allocates space for a closure which is being constructed (8 bytes for a 64 bit pointer).
+Line 3 casts the new pointer to the type of the closure.
+Lines 4 and 5 store the pointer to the appropriate function in the new closure.
+Line 6 returns the closure.
+The reason there are so many closures in this simple function, is due to call-by-name using thunks
+the type of its parameter and the parameter of the function it returns are both themselves functions.
+
+\subsubsection{Garbage Collection}
+
+Instead of writing a garbage collector myself, I decided on using the Boehm garbage collector.
+It is incredibly easy to use, as it just replaces the standard \texttt{malloc} with its own procedure
+to allow it to track the memory allocations, and clean them up once no references to them remain.
+I only used it for closures, with the rest of the data being stack allocated.
+
+\subsubsection{u8rec}
