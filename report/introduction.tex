@@ -39,7 +39,7 @@ Edsger W. Dijkstra said \cite{dijkstra72}
     to give a convincing proof of its correctness.
 \end{quote}
 This shows a flaw with running tests, they cannot possibly check every possible set of inputs
-to the program, so cannot give any guaruntees outside of the test cases that are checked.
+to the program, so cannot give any guarantees outside of the test cases that are checked.
 If there is an edge case for which a function doesn't perform correctly which is overlooked
 and so not tested, it can easily make it into production where, depending on where it is
 deployed, it could have disastrous consequences.
@@ -184,58 +184,23 @@ I define my language's operational semantics in line with that of the $\lambda^{
 
 To show an example of the strength of the calculus, I use it to prove that increasing an even number by
 2 leaves it even in Table \ref{fig:even_proof}.
-\textbf{Is this example worthwhile or should I try something else?}
-Every interesting example I can think of is very complex to show the whole proof,
-do I use a very simple example, show an incomplete proof or show a very long proof?
-
-\begin{table}
+I include a simple example of a refinement typed proof in Figure \ref{fig:refinement_proof_example}.
+Note that I use the type $4$ to mean $(x:u8) x =_{u8} 4$.
+\begin{figure}
     \centering
-    \begin{tabular}{|r|>{$}l<{$}|l|}
-        \hline
-        % TODO
-        1 &
-        \langle \pi_1(d2\ (n+1)), \pi_2(d2\ (n+1)) \rangle = d2\ (n+1)
-        & $\pi$-$\eta$-EQ\\\hline
-        % TODO
-        2 &
-        d2\ (n+1) = \langle \pi_2(d2\ n), \pi_1(d2\ n) + 1 \rangle
-        & U8REC\\\hline
-        3 &
-        \langle \pi_1(d2\ (n+1)), \pi_2(d2\ (n+1)) \rangle = \langle \pi_2(d2\ n), \pi_1(d2\ n) + 1 \rangle
-        & TRANS-EQ (1,2)\\\hline
-        4 &
-        \pi_2(d2\ (n+1)) = \pi_1(d2\ n) + 1
-        & PROJ2-$\xi$-EQ (5)\\\hline
-        % TODO
-        5 &
-        \pi_1(d2\ (n+1)) = \pi_2(d2\ n)
-        & SOMETHING\\\hline
-        6 &
-        \langle \pi_2(d2\ (n+1)), \pi_1(d2\ (n+1)) + 1 \rangle = \langle \pi_1(d2\ n)+1, \pi_2(d2\ n)+1 \rangle
-        & PAIR-$\xi$-EQ (4,5)\\\hline
-        % TODO
-        7 &
-        d2\ (n+2) = \langle \pi_2(d2\ (n+1)), \pi_1(d2\ (n+1))+1 \rangle
-        & SOMETHING\\\hline
-        8 &
-        d2\ (n+2) = \langle \pi_1(d2\ n) + 1, \pi_2(d2\ n) + 1 \rangle
-        & TRANS-EQ (6, 7)\\\hline
-        % TODO
-        9 &
-        \pi_1(d2\ n) + 1 = \pi_1(d2\ (n+2))
-        & SOMETHING\\\hline
-        % TODO
-        10 &
-        \pi_1(d2\ (n+2)) = \pi_2(d2\ (n+2))
-        & TRANS-EQ\\\hline
-        % TODO
-        11 &
-        n: even \vdash n + 2: even
-        & REFTYPE-INTRO\\\hline
-    \end{tabular}
-    \caption{Even + 2 = Even}
-    \label{fig:even_proof}
-\end{table}
+    \begin{prooftree}
+        \infer0{x:4 \vdash x: (x:u8)x =_{u8} 4}
+        \infer0{x:4, x:u8, x =_{u8} 4 \vdash x:u8}
+        \infer1{x:4 \vdash u8 \sqsubseteq 4}
+        \infer2{x:4 \vdash x: u8}
+        \infer0{x:4 \vdash x:4}
+        \infer1{x:4 \vdash x =_{u8} 4}
+        \infer1{x:4 \vdash x + 2 =_{u8} 6}
+        \infer2{x:4 \vdash x: (y:u8) y+2 =_{u8} 6}
+    \end{prooftree}
+    \caption{With Refinement Types}
+    \label{fig:refinement_proof_example}
+\end{figure}
 
 \subsection{My Compiler}
 
@@ -260,3 +225,13 @@ courses I've taken over the last 2 years.
 Particularly: compilers, computer aided formal verification, lambda calculus and types, logic and proof
 and principles of programming languages all were very useful in enabling me to know how to proceed
 with challenging areas of the project.
+
+\subsubsection{Compiler Structure}
+
+The compiler uses a very standard and well tested structure: parsing, labelling, type checking,
+IR bytecode generation, linking.
+The type checking stage is split further into several stages as it is the most complex due to the
+complexity of the type system.
+The parsing, labelling and IR bytecode generation stages are not particularly complicated, however
+learning to use LLVM for code generation took quite some time and because the language is functional,
+compiling to assembly is not as straightforward as it would be for a procedural language.

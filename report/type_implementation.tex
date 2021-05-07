@@ -347,6 +347,8 @@ user.
 One of the advantages of this method is that it provides a counterexample when a type check fails,
 and if I had more time I would like to have added the ability for the compiler to present the
 counterexample to the user in a readable way to make debugging the error much easier.
+As things stand, the compiler gives the counterexample exactly as it gets it from Z3, which is less
+readable than I would like, but still very useful.
 
 \subsection{Implementing u8rec}
 
@@ -386,8 +388,11 @@ we try running Z3 on a program like this we encounter a problem, it runs for a w
 unknown.
 This is because Z3 cannot prove inductive facts (\textit{Do I need a citation for this?}) which is
 required to prove any property making use of both of these rules.
+
+\subsubsection{Type Focused Implementation Of u8rec}
+
 Due to this limitation, I found that I could leave out 2 of Denney's axiom schemas, and use only the
-remaining one to have a calculus just as useful, but accessible to Z3.
+remaining one to be accessible to Z3, without greatly limiting its usefulness.
 The rule I keep is
 
 \begin{center}
@@ -407,24 +412,48 @@ to SMT doesn't need to be able to deal with them.
 This approach effectively forces the user to provide the base case and inductive hypothesis explicitly,
 as the compiler gets the definition of $\phi[n]$ from the term $t'$ using the previously mentioned
 utility function \texttt{arg\_type}.
-Amazingly, this doesn't restrict the language at all, results of $u8rec$ can still be typed with anything
-they would have been able to otherwise, but sometimes the user is required to give a more restrictive
-type to $t'$ for it to be able to happen.
+
+To see that we don't lose the power of $u8rec$ when we lose these axioms, consider for either that
+we wish to show that some $u8rec$ term has a value $t$.
+We could expand on this problem to try to show that $u8rec\ t_0\ t'\ n = t[n]$.
+Then we simply rewrite this as $u8rec\ t_0\ t'\ n: (x: \phi)x = t$ to enable us to prove it using
+the one (U8REC) rule.
+In the most extreme case, this requires the user to use a type which can only have one possible value
+assigned to it, so is less convenient, and might take more steps to prove the typing of the subterm.
+
 Similarly, I don't use Denney's rule ($\lambda$-$\beta$-EQ) as it allows circumventing type guards
 in some instances.
 This would make life easier for the user as they would be able to use less descriptive types for
 parameters while still making strong assumptions about them as long as any arguments used have
 acceptable types, but it would add too much complexity to the compiler and is only more useful
 for saving the user time rather than improving the functionality of the language.
+As with the earlier example, we could instead use (ABS) and (APP) with more restrictive types,
+which has stronger requirements on the types involved, using a proof tree such as in Figure
+\ref{fig:beta_eq}.
 
-\subsection{Optimization}
+\begin{figure}
+    \centering
+    \begin{prooftree}
+        \hypo{\textit{dependent on structure of t}}
+        \infer1{x:(x:\phi)x=t' \vdash t = t[t'/x]}
+        \infer1{x:(x:\phi)x=t' \vdash t:(y:\psi)y=t[t'/x]}
+        \infer1{\lambda x: (x:\phi)x=t' . t : \Pi_{x: (x:\phi)x=t'} (y:\psi)y=t[t'/x]}
+        \infer0{t': (x:\phi)x=t'}
+        \infer2{(\lambda x: (x:\phi)x=t' . t) t' : (y:\psi)y=t[t'/x]}
+        \infer1{(\lambda x: (x:\phi)x=t' . t) t' = t[t'/x]}
+    \end{prooftree}
+    \caption{An Alternative To ($\lambda$-$\beta$-EQ)}
+    \label{fig:beta_eq}
+\end{figure}
 
-My compiler has a lot of room for optimization, but it was not a focus for me, as the role of my
+\subsection{Optimisation}
+
+My compiler has a lot of room for optimisation, but it was not a focus for me, as the role of my
 compiler is much simpler than that of Z3.
 Running the SMT solver will always be the most time consuming part of the type checking.
 There are various computations such as computing the unrefined type of an expression after the lambda
 abstraction stage, which are redone many times and would benefit from being cached.
-Also once split into judgements, they are checked independantly and in sequence, even though there
+Also once split into judgements, they are checked independently and in sequence, even though there
 is a lot of overlap as they all come from the same program.
 It would be possible to do a lot of the computation before splitting the program into judgements,
 and then checking them all in parallel to speed up type checking.

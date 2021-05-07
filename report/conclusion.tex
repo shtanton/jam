@@ -1,0 +1,50 @@
+\section{Conclusion}
+
+I have fully explored one possible implementation of a compiler for a language that makes use of
+refinement types.
+There are a vast number of other ways in which this could be explored,
+refinement type systems as a concept are very young and there is a great deal of room for further
+research.
+Other projects investigating refinement types as a verification tool include F* and Liquid Haskell,
+although there are a few others.
+
+Something that struck me from investigating these was that these options was how they all used
+an SMT solver to verify the types \cite{vazouSJ14}.
+A language which didn't do this could potentially take advantage of the fact that refinement types
+don't map perfectly onto first order logic for SMT.
+This could enable them to check a wider variety of properties, or perhaps simplify the type checking.
+Such a project would be close in complexity to an SMT solver so is far beyond the scope of my
+project unfortunately.
+
+While developing my project, I devoted little time to convenience features for the user.
+With more time I would have liked to implement some type inference.
+This would have been particularly useful for languages with a typing system such as mine,
+as frequently, in order to type check, the type of a term might be such that there is only one
+value, so often looked like $t: (x: \sigma) x =_\sigma t$.
+
+Other refinement typed languages also have features to proof totality of recursive functions,
+which I chose not to implement and instead design the language to prevent implementing recursive
+functions at all.
+I implemented $u8rec$ as an example of a construct which covers one type of recursion while
+ensuring totality.
+Most use cases of recursion could be covered by implementing several other of these constants,
+for example consider
+$rec: \Pi_{x: \phi} \Pi_{y: \phi \rightarrow \phi} \Pi_{z: \phi \rightarrow u8} (w: \phi)z\ w =_{u8} 0$.
+The idea is that $z$ is a function which assigns each value of type $\phi$ a $u8$, and using
+refinement types, we enforce that $\forall x: \phi . z\ x \neq 0 \Rightarrow (z\ x > z\ (y\ x))$.
+This would repeatedly run $y$ on $x$ until $z$ gives a value of 0.
+By requiring that $y$ decreases the $z$ value with each call, we cap the number of calls and so
+still guarantee totality.
+This is closer to the approach of Liquid Haskell, where recursive functions must have some property
+which is strictly decreasing with each recursive call.
+
+A language such as mine has various uses in contexts where code reliability and robustness are key.
+Other similar languages are already seeing some use to verify properties in security libaries for
+the internet, and should they become more mainstream these languages might also see use in cases
+where system failure is very costly (like if human lives are at risk).
+The other use is that by giving the compiler more detail about the type of data it is working with,
+more optimisations can be possible, as more assumptions can be made once they have been proved.
+Personally, I think that as the concepts around these type systems are developed and refined,
+we may see history repeating itself with concepts originating in functional programming being
+adopted by mainstream procedural or object oriented languages (as we currently see with features
+such as closures and immutability being key in Rust, a recent systems programming language).

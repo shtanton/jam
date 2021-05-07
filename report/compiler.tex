@@ -137,13 +137,13 @@ with the goal of being a target for compilation for new languages, which can the
 a wide variety of architectures.
 Using LLVM both reduced the amount of work I needed to do, it does for me:
 \begin{itemize}
-    \item Optimization -
+    \item Optimisation -
     Dead code elimination,
     partial evaluation at compile time,
     Loop unrolling,
     Function inlining
-    and many other optimizations are done by the LLVM compiler, which somewhat makes up for the fact that
-    I have done no optimization myself.
+    and many other optimisations are done by the LLVM compiler, which somewhat makes up for the fact that
+    I have done no optimisation myself.
     \item Structures/Records -
     LLVM has structures as a type, and provides instructions for working with them.
     \item Functions -
@@ -224,3 +224,31 @@ to allow it to track the memory allocations, and clean them up once no reference
 I only used it for closures, with the rest of the data being stack allocated.
 
 \subsubsection{u8rec}
+
+As with the type checker, implementing $u8rec$ was particularly challenging.
+LLVM bytecode uses SSA (static single assignment) form, which means that variables cannot be reassigned to.
+Instead of this, we use phi nodes to implement constructs like loops.
+
+A bytecode representation of $u8rec$ has 4 blocks
+\begin{itemize}
+    \item \textbf{Entry} -
+    Constructs a thunk for the initial accumulator value (the value passed through the function each loop).
+    \item \textbf{Header} -
+    Checks the current value of the counter and jumps to \textbf{Exit} if it is zero or \textbf{Body} if not.
+    Because the value of the counter could be either the initial value for the first time the block
+    runs, or the value calculated in \textbf{Body} for subsequent runs, I used a phi node do select
+    the correct value depending on where this block was jumped to from.
+    This produces a term like\newline
+    \texttt{phi i8 [ 2, \%u8rec\_entry ], [ \%count, \%u8rec\_body ]}.\newline
+    The \textbf{Header} block also uses a phi node to select the value of the accumulator going into
+    \textbf{Body}, either the initial value from \textbf{Entry} or the value calculated in \textbf{Body}
+    from the last loop.
+    \item \textbf{Body} -
+    First we decrement the count and build a thunk for it to allow it to be passed into the user provided
+    recursion function.
+    We then create a new thunk which calls that function (which is actually a closure) with the count
+    and accumulator thunks to get the next value of the accumulator.
+    \item \textbf{Exit} -
+    Finally we run the accumulator thunk to collapse it into a value which is available for evaluation
+    of the rest of the program.
+\end{itemize}

@@ -1,19 +1,129 @@
 \section{Type Checker Theory}
 
-\subsection{From the introduction}
+\subsection{Introducing The Calculus}
 
-\textit{This needs to be woven into this chapter properly}
+The type checker is easily the most complex aspect of the compiler, as the types it checks are capable
+of expressing so much more than those of most languages.
+Denney's calculus, which mine is based on, is far more complex than the $\lambda^{\times \rightarrow}$
+calculus even though it only introduces refinement types.
+To give a sense of the complexity of proving a typing judgement using the calculus, I include a proof
+that an even number plus 2 remains even in Table \ref{tab:even_proof}.
 
-I leave out one of Denney's typing rules ($\lambda$-$\beta$-EQ) as it is hard for an SMT solver to reason with and
-the same expressiveness can be achieved without it by choosing a more restrictive $\phi$.
-I also define the sets of ground types (Table \ref{tab:ground_types}), constants (Table \ref{tab:constants}),
-predicates (Table \ref{tab:predicates}) and axioms (Figure \ref{fig:axiom_schemas}) that Denney uses in his
+\begin{table}
+    \centering
+    \begin{tabular}{|r|>{$}l<{$}|l|}
+        \hline
+        % TODO
+        1 &
+        \langle \pi_1(d2\ (n+1)), \pi_2(d2\ (n+1)) \rangle = d2\ (n+1)
+        & $\pi$-$\eta$-EQ\\\hline
+        % TODO
+        2 &
+        d2\ (n+1) = \langle \pi_2(d2\ n), \pi_1(d2\ n) + 1 \rangle
+        & U8REC\\\hline
+        3 &
+        \langle \pi_1(d2\ (n+1)), \pi_2(d2\ (n+1)) \rangle = \langle \pi_2(d2\ n), \pi_1(d2\ n) + 1 \rangle
+        & TRANS-EQ (1,2)\\\hline
+        4 &
+        \pi_2(d2\ (n+1)) = \pi_1(d2\ n) + 1
+        & PROJ2-$\xi$-EQ (5)\\\hline
+        % TODO
+        5 &
+        \pi_1(d2\ (n+1)) = \pi_2(d2\ n)
+        & SOMETHING\\\hline
+        6 &
+        \langle \pi_2(d2\ (n+1)), \pi_1(d2\ (n+1)) + 1 \rangle = \langle \pi_1(d2\ n)+1, \pi_2(d2\ n)+1 \rangle
+        & PAIR-$\xi$-EQ (4,5)\\\hline
+        % TODO
+        7 &
+        d2\ (n+2) = \langle \pi_2(d2\ (n+1)), \pi_1(d2\ (n+1))+1 \rangle
+        & SOMETHING\\\hline
+        8 &
+        d2\ (n+2) = \langle \pi_1(d2\ n) + 1, \pi_2(d2\ n) + 1 \rangle
+        & TRANS-EQ (6, 7)\\\hline
+        % TODO
+        9 &
+        \pi_1(d2\ n) + 1 = \pi_1(d2\ (n+2))
+        & SOMETHING\\\hline
+        % TODO
+        10 &
+        \pi_1(d2\ (n+2)) = \pi_2(d2\ (n+2))
+        & TRANS-EQ\\\hline
+        % TODO
+        11 &
+        n: even \vdash n + 2: even
+        & REFTYPE-INTRO\\\hline
+    \end{tabular}
+    \caption{Even + 2 = Even}
+    \label{tab:even_proof}
+\end{table}
+
+It is clear to see how much of a difference the refinement types make to the complexity of type checking.
+Denney's calculus has 62 typing rules, which don't include the extra rules that would need to be added
+for ground types like $bool$ and $u8$ to allow them to be useful in refinement types.
+
+\subsection{Interesting Rules}
+
+I've picked out some of the interesting rules to discuss in Figure \ref{fig:interesting_type_rules}.
+
+\begin{figure}
+    \centering
+    \begin{prooftree}
+        \hypo{\Gamma \vdash t =_\phi t'}
+        \infer1[(EQ)]{\Gamma \vdash t: \phi}
+    \end{prooftree} \quad
+    \begin{prooftree}
+        \hypo{\Gamma \vdash t: \phi}
+        \hypo{\Gamma \vdash P[t/x]}
+        \infer2[(REFTYPE-INTRO)]{\Gamma \vdash t: (x: \phi)P}
+    \end{prooftree} \quad
+    \begin{prooftree}
+        \hypo{\Gamma \vdash \phi' \sqsubseteq \phi}
+        \hypo{\Gamma, x: \phi \vdash t =_\psi t'}
+        \infer2[(ABS-$\xi$-EQ)]{\Gamma \vdash \lambda x: \phi . t =_{\Pi_{x:\phi} \psi} \lambda x: \phi' . t'}
+    \end{prooftree} \quad
+    \begin{prooftree}
+        \hypo{\Gamma \vdash t: \phi}
+        \infer1[(REFL-EQ)]{\Gamma \vdash t =_\phi t}
+    \end{prooftree} \quad
+    \begin{prooftree}
+        \hypo{\Gamma \vdash t: (x: \phi)P}
+        \infer1[(REFTYPE-ELIM)]{\Gamma \vdash P[t/x]}
+    \end{prooftree} \quad
+    \begin{prooftree}
+        \hypo{\Gamma \vdash t: \Sigma_{x: \phi} \psi}
+        \infer1[(PROJ2)]{\Gamma \vdash \pi_2(t): \psi[\pi_1(t)/x]}
+    \end{prooftree}
+    \caption{Interesting Type Rules}
+    \label{fig:interesting_type_rules}
+\end{figure}
+
+(EQ) is useful when combined with another rule like (ABS-$\xi$-EQ).
+Denney uses the example of proving $\lambda n: nat.n : even \rightarrow even$, which can't be done
+without these rules.
+We need to involve equality and logic for a proof like this as it is not the case that any function
+with type $nat \rightarrow nat$ is also of type $even \rightarrow even$.
+(REFTYPE-INTRO) and (REFTYPE-ELIM) show how refinement types function, and the logical assumption
+that we're allowed to make given that a refinement type holds.
+These are vital for grounding the abstract calculus in logic, and allows the translation to SMT
+which I discuss later to happen.
+I included (REFL-EQ) as it shows a problem with a syntax directed approach to type checking this
 calculus.
-My implementation of $u8rec$ is based on Denney's for $natrec$ but I leave out 2 typing rules as Z3 isn't
-capable of inductive reasoning which is required to allow it to work with them.
-Fortunately, again by carefully selecting the type guard on the iterator function argument to $u8rec$,
-we don't lose expressiveness without these axioms, but we essentially force the programmer to specify the
-induction so it can be abstracted out before the SMT solver is run.
+The calculus has the strange property that any typing can be proved using an infinitely large
+proof tree (which is of course invalid) that alternates between (REFL-EQ) and (EQ).
+So we can't start at the base of a tree and grow upwards as we can always easily enter an infinite
+loop.
+I discuss this further later.
+Finally, (PROJ2) shows one of the dependent typing properties of the calculus, where the \textit{type}
+of $\pi_2(t)$ depends on the \textit{value} of $\pi_1(t)$.
+
+\subsection{Other Extensions}
+
+As well as the typing rules, I have defined various sets that Denney left abstract in his calculus.
+These are the ground types (Table \ref{tab:ground_types}), constants (Table \ref{tab:constants}),
+predicates (Table \ref{tab:predicates}) and axioms, which describe the semantics of the other 3
+sets, but which I won't list exhaustively, instead just looking at one interesting example in
+Figure \ref{fig:u8rec_axiom}.
 
 \begin{table}
     \centering
@@ -33,6 +143,7 @@ induction so it can be abstracted out before the SMT solver is run.
         $true$, $false$ & $bool$ & Literals for the booleans.\\\cline{1-3}
         $\land$, $\lor$, $\Rightarrow$, $\Leftrightarrow$ & $bool, bool \rightarrow bool$ & Standard binary boolean operators.\\\cline{1-3}
         $\lnot$ & $bool \rightarrow bool$ & Unary not.\\\cline{1-3}
+        $ite$ & $bool, \tau, \tau \rightarrow \tau$ & If-Then-Else.\\\cline{1-3}
         $0$, ..., $255$ & $u8$ & Literals for the 8 bit unsigned integers.\\\cline{1-3}
         $succ$, $pred$ & $u8 \rightarrow u8$ & The successor and predecessor of a $u8$, which will over/underflow.\\\cline{1-3}
         $+$, $-$ & $u8, u8 \rightarrow u8$ & Addition and subtraction for $u8$, which will over/underflow.\\\cline{1-3}
@@ -64,49 +175,44 @@ induction so it can be abstracted out before the SMT solver is run.
         \hypo{\Gamma \vdash t': \Pi_{n:nat} \Pi_{y:\phi[n]} \phi[succ(n)]}
         \infer3[(U8REC)]{\Gamma \vdash u8rec\ t\ t'\ n: \phi[n]}
     \end{prooftree}
-    \caption{Axiom Schemas}
-    \label{fig:axiom_schemas}
+    \caption{u8rec Axiom Schema}
+    \label{fig:u8rec_axiom}
 \end{figure}
 
-\subsection{Introducing The Calculus}
+\subsection{u8 vs nat}
 
-The type checker is easily the most complex aspect of the compiler, as the types it checks are capable
-of expressing so much more than those of most languages.
-Denney's calculus, which mine is based on, is far more complex than the simply typed lambda calculus
-even though it only introduces tuples and refinement types.
-To give a sense of the difference, lets compare deriving types for a term
-with (Figure \ref{fig:with_refinements}) and without (Figure \ref{fig:without_refinements})
-refinements.
-Note that in the refinement typed example I use the type $4$ to mean $(x:u8) x =_{u8} 4$.
+Denney's examples use $nat$ as the basic numeral type in his calculus, while I chose $u8$.
+There are 2 main advantages, and 1 main disadvantage to $u8$.
 
-\begin{figure}
-    \centering
-    \begin{prooftree}
-        \infer0{x:4 \vdash x: (x:u8)x =_{u8} 4}
-        \infer0{x:4, x:u8, x =_{u8} 4 \vdash x:u8}
-        \infer1{x:4 \vdash u8 \sqsubseteq 4}
-        \infer2{x:4 \vdash x: u8}
-        \infer0{x:4 \vdash x:4}
-        \infer1{x:4 \vdash x =_{u8} 4}
-        \infer1{x:4 \vdash x + 2 =_{u8} 6}
-        \infer2{x:4 \vdash x: (y:u8) y+2 =_{u8} 6}
-    \end{prooftree}
-    \caption{With Refinement Types}
-    \label{fig:with_refinements}
-\end{figure}
+\subsubsection{u8 Is Finite}
 
-\begin{figure}
-    \centering
-    \begin{prooftree}
-        \infer0{x:u8 \vdash x:u8}
-    \end{prooftree}
-    \caption{Without Refinement Types}
-    \label{fig:without_refinements}
-\end{figure}
+The calculus I chose needed to be able to be checked in an SMT solver (see later for why), which
+constrained a lot of my decisions, as SMT solvers are still quite limited in what they can prove.
+While testing, I found that frequently, Z3 was unable to reason well enough to avoid a brute force
+approach.
+This approach would work for $u8$, but for $nat$ the type checker would have to return unknown.
+If enough of these brute force methods are needed at the same time, then the problem could easily
+grow to beyond what reasonable hardware can possibly compute, however, by using $u8$ I at least
+have the guarantee that any satisfiability will be decidable, which I can't have with $nat$.
+It is also possible that a problem involving $nat$ could have a counterexample which is enourmous
+enough that the hardware the compiler is being run on can't compute it.
 
-It is clear to see how much of a difference the refinement types make to the complexity of type checking.
-Denney's calculus has 62 typing rules, which don't include the extra rules that would need to be added
-for ground types like $bool$ and $u8$ to allow them to be useful in refinement types.
+\subsubsection{u8 Is Easy For Hardware}
+
+For code generation later on, implementing $u8$ took next to no time, and I can have a very high
+degree of certainty that it works, because the type is simple enough to be available even in
+assembly.
+Implementing $nat$ would have required memory allocation on the heap, and garbage collection,
+with more memory being allocated if the number outgrows the space allocated, with custom
+implementations of basic integer operators that can work on them.
+This would have given a lot of scope for error, and bugs in the compiler make the formal verification
+worthless, as it no longer can be relied upon to have valid proofs.
+
+\subsubsection{u8 Is Limited}
+
+$u8$ can't represent a very large range of values, I only chose it for simplicity, but if the
+language were being written for use in industry, $u32$ or $u64$ would've made more sense,
+probably with an accompanying signed integer type.
 
 \subsection{Implementing The Typing Rules}
 
@@ -135,6 +241,16 @@ further indicates the difficulty of type checking this language.
 To be able to check types, I break the problem down into logic which can be dealt with by an SMT
 solver using a method I discuss in the next chapter.
 
-\textit{I plan to add a short discussion about one of the other calculuses I looked at while deciding what to implement to this chapter}
+\subsection{Another Calculus}
 
-% Other stuff I read about refinement types while researching this
+While researching calculuses related to refinement types, I found another calculus which I nearly
+settled on for my implementation.
+This paper by Aguirre \cite{aguirre16} describes a calculus, and includes a mapping to SMT which
+is proved correct.
+In comparison, Denney uses a more complex calculus, but isn't at all concerned with implementing
+an algorithm to check his type system.
+While I didn't use his calculus, I drew some ideas from Agquirre such as using an apply (\texttt{@})
+function to represent function application to deal with higher order functions.
+Aguirre's calculus lacked dependent typing and records, and only had naturals as a ground type,
+because of these limitations and because Aguirre's calculus already had a translation to SMT, I
+chose Denney's calculus.

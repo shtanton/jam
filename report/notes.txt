@@ -93,3 +93,4 @@ https://ezproxy-prd.bodleian.ox.ac.uk:2120/content/pdf/10.1007/s10817-007-9085-y
 http://theory.stanford.edu/~barrett/pubs/BREO+19.pdf Extending SMT to HOL
 https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.232.1234&rep=rep1&type=pdf Extending sledgehammer with SMT solvers
 https://hokstad.com/how-to-implement-closures
+http://goto.ucsd.edu/~rjhala/papers/real_world_liquid.pdf

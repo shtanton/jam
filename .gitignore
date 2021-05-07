@@ -2,5 +2,11 @@
 /modern_compiler_implementation_in_C/
 gc
 gc.*
-*.pdf
-*.bbl
+report/*.pdf
+report/*.bbl
+report/*.aux
+report/*.out
+report/*.log
+report/*.blg
+report/*.fdb_latexmk
+report/*.fls
