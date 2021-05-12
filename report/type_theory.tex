@@ -4,7 +4,8 @@
 
 The type checker is easily the most complex aspect of the compiler, as the types it checks are capable
 of expressing so much more than those of most languages.
-Denney's calculus, which mine is based on, is far more complex than the $\lambda^{\times \rightarrow}$
+$\lambda^{\times \rightarrow \sqsubseteq}$, which mine is based on,
+is far more complex than the $\lambda^{\times \rightarrow}$
 calculus even though it only introduces refinement types.
 To give a sense of the complexity of proving a typing judgement using the calculus, I include a proof
 that an even number plus 2 remains even in Table \ref{tab:even_proof}.
@@ -59,8 +60,8 @@ that an even number plus 2 remains even in Table \ref{tab:even_proof}.
 \end{table}
 
 It is clear to see how much of a difference the refinement types make to the complexity of type checking.
-Denney's calculus has 62 typing rules, which don't include the extra rules that would need to be added
-for ground types like $bool$ and $u8$ to allow them to be useful in refinement types.
+$\lambda^{\times \rightarrow \sqsubseteq}$ has 62 typing rules, which don't include the extra rules
+that would need to be added for ground types like $bool$ and $u8$ to allow them to be useful in refinement types.
 
 \subsection{Interesting Rules}
 
@@ -210,13 +211,13 @@ worthless, as it no longer can be relied upon to have valid proofs.
 
 \subsubsection{u8 Is Limited}
 
-$u8$ can't represent a very large range of values, I only chose it for simplicity, but if the
-language were being written for use in industry, $u32$ or $u64$ would've made more sense,
+$u8$ can't represent a very large range of values, I only chose it for simplicity, but if Refine
+were being written for use in industry, $u32$ or $u64$ would've made more sense,
 probably with an accompanying signed integer type.
 
 \subsection{Implementing The Typing Rules}
 
-Type checking for a standard language can be done using the typing rules of the calculus for the language.
+Type checking for a standard language can be done using the typing rules of the calculus.
 This is because the bottom judgement in a typing rule is unique to that typing rule, and if a judgement
 fits the bottom of a rule, the requirements for the top rule can be generated from it.
 For example, suppose we wish to show the typing $\langle \rangle \vdash \lambda x: u8 . x: u8 \rightarrow u8$
@@ -225,8 +226,8 @@ We try to construct a proof tree from the bottom up.
 The bottom rule must be (ABS), which must require $x:u8 \vdash x : u8$.
 Again only one rule can be used which is (VAR) to complete the tree.
 This way we can easily construct a proof tree if it exists, or prove it doesn't exist for any judgement.
-Now we try the same exercise using Denney's calculus, supposing we want to prove that
-$\langle \rangle \vdash \lambda x: u8 . x : u8$ cannot have a proof tree.
+Now we try the same exercise using $\lambda^{\times \rightarrow \sqsubseteq}$,
+supposing we want to prove that $\langle \rangle \vdash \lambda x: u8 . x : u8$ cannot have a proof tree.
 The rules that could be at the bottom of our tree are (EQ) or (WEAKEN).
 Both of these have a part of the top of the rule that isn't mentioned in the bottom.
 To prove we can't use (EQ) we have to show that there exists no $t'$ such that
@@ -234,9 +235,10 @@ $\langle \rangle \vdash \lambda x: u8 . x =_{u8} t'$, which is extremely difficu
 To prove we can't use (WEAKEN) we have to show that there exists no $\phi'$ such that
 $\langle \rangle \vdash \lambda x: u8 . x : \phi'$ and $\langle \rangle \vdash \phi \sqsubseteq \phi'$
 which is very difficult also.
-In fact, because of the first order logic embedded into Denney's calculus, we can reduce the
+In fact, because of the first order logic embedded into
+$\lambda^{\times \rightarrow \sqsubseteq}$, we can reduce the
 problem of satisfication for first order logic to checking a judgement in the calculus, which
-further indicates the difficulty of type checking this language.
+further indicates the difficulty of type checking Refine.
 
 To be able to check types, I break the problem down into logic which can be dealt with by an SMT
 solver using a method I discuss in the next chapter.

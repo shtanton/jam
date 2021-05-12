@@ -26,7 +26,7 @@ There are 5 ways in which a type guard can be applied, but 4 of them don't invol
     \item Using $\pi_i$ to extract a value from a 2-tuple.
     We need to check that the term being extracted from is in fact a 2-tuple.
     \item Calling a constant.
-    Arguments to constants in my language are restricted to one of the unrefined types.
+    Arguments to constants in Refine are restricted to one of the unrefined types.
     \item Calling a predicate.
     Similarly, arguments to predicates are restricted to one of the unrefined types.
     \item The whole program must be of type $u8$.
@@ -151,8 +151,8 @@ We have now reduced our goal to something close to what an SMT solver can do:
 Unfortunately, there is still an obstacle preventing an easy translation to SMT.
 To ask an SMT solver to find such an environment, it needs to understand the term to be able to reason
 about it, thus we need to be able to embed the term into the SMT program.
-This is almost easy, but Denney's calculus utilises higher order functions, which are not within
-the capabilities of first order logic, nor the Z3 SMT solver.
+This is almost easy, but $\lambda^{\times \rightarrow \sqsubseteq}$ utilises higher order functions,
+which are not within the capabilities of first order logic, nor the Z3 SMT solver.
 
 \subsubsection{Defunctionalization}
 
@@ -172,7 +172,7 @@ almost all of the type checker this way.
 
 Because SMT solvers don't have lambda abstractions, we need to change the way our functions are defined
 to make use of what they do have: named global functions.
-There is a simple process to translate the language into this, called lambda lifting, which I learned
+There is a simple process to translate languages into this, called lambda lifting, which I learned
 about here \cite{barbosaROTB19}.
 For any abstraction, we define a new function $f$ which has a parameter for each free variable in the
 abstraction, as well as the original parameter of the abstraction.

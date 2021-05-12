@@ -1,27 +1,27 @@
 \section{Introduction}
 
-My project is a compiler for a language with runtime semantics much like Haskell,
-but the typing semantics are from a lambda calculus defined by Denney \cite{denney98}.
-Since functional programming languages are nothing new and my language does nothing new
-at runtime compared to Haskell, I will focus on the type system of my language which is
-what makes it interesting.
+I have developed a compiler for a language I call Refine,
+which has runtime semantics much like Haskell, but typing semantics much like a calculus defined
+by Denney \cite{denney98}, which I'll call $\lambda^{\times \rightarrow \sqsubseteq}$.
+$\lambda^{\times \rightarrow \sqsubseteq}$ and Refine both make use of refinement types to push
+the boundaries formal verification.
 
 \subsection{What Are Refinement Types?}
 
 A recent trend for programming languages has been improving the compiler's ability to find
-bugs in programs at compile time and so improve the robustness of compiled code.
+bugs in programs at compile time to improve the robustness of compiled code.
 Building formal verification tools into compilers can be done in many ways, but the method
 I've chosen to explore is using \textit{refinement types}.
 In any programming language, a type can be considered to be a set of all the possible values
-that a variable of that type could have, for example, the boolean type could be considered
-as the set $\{true, false\}$.
+that a variable of that type could have.
+For example, the boolean type could be considered as the set $\{true, false\}$.
 Refinement types allow the programmer to add \textit{refinements} to these types which
 filter the set using a predicate.
 Using Denney's syntax for a refinement type, the type
 $(x:nat)x<5$ corresponds to the set $\{x \in nat | x < 5\}$ which is equivalent to
 $\{0, 1, 2, 3, 4\}$.
-As I'll explain later, the language strongly resembles the $\lambda^{\times \rightarrow}$ calculus
-with simple types, so it is easy to see that any term can be fully $\beta$ and $\eta$ reduced to
+Because Refine strongly resembles the $\lambda^{\times \rightarrow}$ calculus
+with simple types, it is easy to see that any term can be fully $\beta$ and $\eta$ reduced to
 arrive at a value for the term.
 If, in a given context, every possible value a term can take is in the set of values corresponding to
 a type, then the term can have that type.
@@ -31,12 +31,11 @@ a type, then the term can have that type.
 A crucial part of any software is reliability and robustness.
 Currently, the most widely used strategy for ensuring that software works as it should
 is to run automated tests.
-Edsger W. Dijkstra said \cite{dijkstra72}
 \begin{quote}
-    program testing can be a very effective way to show the presence of bugs, but is
+    Program testing can be a very effective way to show the presence of bugs, but is
     hopelessly inadequate for showing their absence.
     The only effective way to raise the confidence level of a program significantly is
-    to give a convincing proof of its correctness.
+    to give a convincing proof of its correctness. - Edsger W. Dijkstra \cite{dijkstra72}
 \end{quote}
 This shows a flaw with running tests, they cannot possibly check every possible set of inputs
 to the program, so cannot give any guarantees outside of the test cases that are checked.
@@ -60,7 +59,7 @@ Finding the solution to $div2\ n$ involves iterating $n$ times and alternately i
 $n-1$.
 \begin{quote}
     If verifying a result is simpler than computing a result then refinement types can prove that
-    every result can be verified.
+    every result is correct.
 \end{quote}
 
 The second is a problem where there are 2 algorithms which could be used to compute a value.
@@ -91,78 +90,88 @@ could.
     type checker is more capable.
 \end{itshape}
 
-\subsection{My Language}
+\subsection{Refine}
 
-My language is based on Denney's calculus, with a few changes.
-Denney's calculus has 5 types, as does mine.
+Refine is based on $\lambda^{\times \rightarrow \sqsubseteq}$, with a few changes.
+$\lambda^{\times \rightarrow \sqsubseteq}$ has 5 types (Table \ref{tab:types}),
+7 terms (Table \ref{tab:terms}) and propositions, which are mostly first order logic constructs
+that I won't repeat, though I show the most interesting 2 in Table \ref{tab:propositions}.
 
-\begin{tabular}{r|p{0.8\textwidth}}
-    \textbf{1} &
-    The unit type, a term of type \textbf{1} must have the value $\ast$.\\\cline{1-2}
-    $\gamma$ &
-    A ground type, my language has 2 as listed in \ref{tab:ground_types}\\\cline{1-2}
-    $\Sigma_{x:\phi} \psi$ &
-    A pair of values (2-tuple).
-    The first has type $\phi$ and the second has type $\psi$.
-    Contrary to the $\lambda^{\times \rightarrow}$ calculus, the type of the second value
-    can be dependent on the first value.
-    For example a tuple of 2 numbers could be restricted so the second is equal to the first with
-    the type
-    $\Sigma_{x: u8} (y: u8) x =_{u8} y$.
-    We refer to the ability for a type to depend on a value as \textit{dependent typing}\\\cline{1-2}
-    $\Pi_{x:\phi} \psi$ &
-    A function from $\phi$ to $\psi$.
-    These are also dependently typed, the type of the return value can be restricted based on the
-    value of the argument.
-    Any argument used to call the function should have type $\phi$, this is how we impose
-    \textit{type guarding}.\\\cline{1-2}
-    $(x:\phi)P$ &
-    A type $\phi$ which is \textit{refined} by filtering the possible values of a term using the
-    predicate $P$.
-    For example, were the type $(x: u8) x < 3$ used on a term, then at runtime the value of the
-    term must but in the set $\{0, 1, 2\}$.
-\end{tabular}
+\begin{table}
+    \begin{tabular}{|r|p{0.8\textwidth}|}
+        \hline
+        \textbf{1} &
+        The unit type, a term of type \textbf{1} must have the value $\ast$.\\\cline{1-2}
+        $\gamma$ &
+        A ground type, in Refine this is one of $bool$ (boolean) or $u8$ (unsigned 8 bit integer)\\\hline
+        $\Sigma_{x:\phi} \psi$ &
+        A pair of values (2-tuple).
+        The first has type $\phi$ and the second has type $\psi$.
+        Contrary to the $\lambda^{\times \rightarrow}$ calculus, the type of the second value
+        can be dependent on the first value.
+        For example a tuple of 2 numbers could be restricted so the second is equal to the
+        first with the type
+        $\Sigma_{x: u8} (y: u8) x =_{u8} y$.
+        We refer to the ability for a type to depend on a value as \textit{dependent typing}\\\cline{1-2}
+        $\Pi_{x:\phi} \psi$ &
+        A function from $\phi$ to $\psi$.
+        These are also dependently typed, the type of the return value can be restricted based on the
+        value of the argument.
+        Any argument used to call the function should have type $\phi$, this is how we impose
+        \textit{type guarding}.\\\cline{1-2}
+        $(x:\phi)P$ &
+        A type $\phi$ which is \textit{refined} by filtering the possible values of a term using the
+        predicate $P$.
+        For example, were the type $(x: u8) x < 3$ used on a term, then at runtime the value of the
+        term must but in the set $\{0, 1, 2\}$.\\\hline
+    \end{tabular}
+    \caption{Types}
+    \label{tab:types}
+\end{table}
 
-Denney also defines 7 terms, which I use.
+\begin{table}
+    \begin{tabular}{|r|p{0.8\textwidth}|}
+        \hline
+        $x$ &
+        A variable, which will be bound as the parameter of a function or from dependent typing.\\\cline{1-2}
+        $k(t_1, ..., t_n)$ &
+        A constant, which takes $n$ arguments and returns a value.
+        Unlike a function value defined by the user, constants can have axioms that govern how the typechecker
+        should reason about them.\\\cline{1-2}
+        $\ast$ &
+        The value of type \textbf{1}\\\cline{1-2}
+        $\langle t, t' \rangle$ &
+        Creates a 2-tuple value.\\\cline{1-2}
+        $\lambda x: \phi . t$ &
+        Creates a function value.
+        $t$ is considered in a context where $x$ has type $\phi$.\\\cline{1-2}
+        $\pi_i(t)$ &
+        Extract a value from a 2-tuple. $i \in \{1, 2\}$.\\\cline{1-2}
+        $t\ t'$ &
+        Apply function $t$ to argument $t'$.
+        Refine uses call-by-name semantics.\\\hline
+    \end{tabular}
+    \caption{Terms}
+    \label{tab:terms}
+\end{table}
 
-\begin{tabular}{r|p{0.8\textwidth}}
-    $x$ &
-    A variable, which will be bound as the parameter of a function.\\\cline{1-2}
-    $k(t_1, ..., t_n)$ &
-    A constant, which takes $n$ arguments and returns a value.
-    Unlike a function value defined by the user, constants can have axioms that govern how the typechecker
-    should reason about them.\\\cline{1-2}
-    $\ast$ &
-    The value of type \textbf{1}\\\cline{1-2}
-    $\langle t, t' \rangle$ &
-    Creates a 2-tuple value.\\\cline{1-2}
-    $\lambda x: \phi . t$ &
-    Creates a function value.
-    $t$ is considered in an environment where $x$ has type $\phi$.\\\cline{1-2}
-    $\pi_i(t)$ &
-    Extract a value from a 2-tuple. $i \in \{1, 2\}$.\\\cline{1-2}
-    $t\ t'$ &
-    Apply function $t$ to argument $t'$.
-    The language uses call-by-name, the semantics of which I explain later.
-\end{tabular}
-
-Denney includes syntax for propositions, and semantics for them in his typing rules.
-Most of it is first order logic which is well known and not worth repeating here, but some constructs
-are of interest.
-The rest I include in the appendix.
-
-\begin{tabular}{r|p{0.8\textwidth}}
-    $t =_\phi t'$ &
-    This functions almost exactly as you would expect from equality, with the exception of function types.
-    2 functions can be equal even if they don't have the same image, we only care about functions
-    restricted to the domain of $\phi$.
-    Denney's (ABS-$\xi$-EQ) rule is used for this, and allows us to prove propositions like\newline
-    $\lambda x: bool . x \quad =_{(x:bool) x =_{bool} true\ \rightarrow\ bool} \quad \lambda x: bool . true$.
-    \\\cline{1-2}
-    $\phi \sqsubseteq \psi$ &
-    This is defined to mean $\phi$ is a supertype of $\psi$,
-    so any value which a term of type $\psi$ could have, $\phi$ can also have.
-\end{tabular}
+\begin{table}
+    \begin{tabular}{|r|p{0.8\textwidth}|}
+        \hline
+        $t =_\phi t'$ &
+        This functions almost exactly as you would expect from equality, with the exception of function types.
+        2 functions can be equal even if they don't have the same image, we only care about functions
+        restricted to the domain of $\phi$.
+        Denney's (ABS-$\xi$-EQ) rule is used for this, and allows us to prove propositions like\newline
+        $\lambda x: bool . x \quad =_{(x:bool) x =_{bool} true\ \rightarrow\ bool} \quad \lambda x: bool . true$.
+        \\\cline{1-2}
+        $\phi \sqsubseteq \psi$ &
+        This is defined to mean $\phi$ is a supertype of $\psi$,
+        so any value which a term of type $\psi$ could have, $\phi$ can also have.\\\hline
+    \end{tabular}
+    \caption{Propositions}
+    \label{tab:propositions}
+\end{table}
 
 I've added some extra terms using syntactic sugar to make life easier for the user too.
 
@@ -174,7 +183,7 @@ I've added some extra terms using syntactic sugar to make life easier for the us
     $let\ x_1: \phi_1 = t_1, ..., x_n: \phi_n = t_n\ in\ u \coloneqq (\lambda x_1: \phi_1 .\ ...(\lambda x_n: \phi_n . u)\ t_n...)\ t_1$
 \end{center}
 
-I define my language's operational semantics in line with that of the $\lambda^{\times \rightarrow}$ calculus.
+I define Refine's operational semantics in line with that of the $\lambda^{\times \rightarrow}$ calculus.
 
 \begin{center}
     $(\lambda x: \phi . t) t' \rightarrow_\beta t[t'/x]$
@@ -182,43 +191,58 @@ I define my language's operational semantics in line with that of the $\lambda^{
     $\pi_i(\langle t_1, t_2 \rangle) \rightarrow_\beta t_i$
 \end{center}
 
-To show an example of the strength of the calculus, I use it to prove that increasing an even number by
-2 leaves it even in Table \ref{fig:even_proof}.
-I include a simple example of a refinement typed proof in Figure \ref{fig:refinement_proof_example}.
-Note that I use the type $4$ to mean $(x:u8) x =_{u8} 4$.
+To see the strength of refinement types, consider the simple example of ordering 2 integers in
+Figure \ref{fig:refinement_ordering}.
+$\Gamma$ is $x: \Sigma_{y:u8} u8$, $c$ is $\pi_1(x) < \pi_2(x)$ and $\phi$ is $\Sigma{y:u8} (z:u8) y \leq z$.
+
 \begin{figure}
     \centering
-    \begin{prooftree}
-        \infer0{x:4 \vdash x: (x:u8)x =_{u8} 4}
-        \infer0{x:4, x:u8, x =_{u8} 4 \vdash x:u8}
-        \infer1{x:4 \vdash u8 \sqsubseteq 4}
-        \infer2{x:4 \vdash x: u8}
-        \infer0{x:4 \vdash x:4}
-        \infer1{x:4 \vdash x =_{u8} 4}
-        \infer1{x:4 \vdash x + 2 =_{u8} 6}
-        \infer2{x:4 \vdash x: (y:u8) y+2 =_{u8} 6}
+    \begin{prooftree}[separation=0.5em]
+        \infer0{\Gamma, c \vdash \pi_1(x): u8}
+        \infer0{\Gamma, c \vdash \pi_2(x): u8}
+        \infer0{\Gamma, c \vdash \pi_1(x) < \pi_2(x)}
+        \infer1{\Gamma, c \vdash \pi_1(x) \leq \pi_2(x)}
+        \infer2{\Gamma, c \vdash \pi_2(x): (z:u8)\pi_1(x) \leq z}
+        \infer2{\Gamma, c \vdash \langle \pi_1(x), \pi_2(x) \rangle =_{\phi} x}
+        \infer1{\Gamma, c \vdash x: \phi}
+        \hypo{Similar}
+        \infer1{\Gamma, \lnot c \vdash \langle \pi_2(x), \pi_1(x) \rangle: \phi}
+        \infer2{\Gamma \vdash ite\ (\pi_1(x) < \pi_2(x))\ x\ \langle \pi_2(x), \pi_1(x) \rangle: \phi}
     \end{prooftree}
-    \caption{With Refinement Types}
-    \label{fig:refinement_proof_example}
+    \caption{Refinement Types For An Ordered Tuple}
+    \label{fig:refinement_ordering}
 \end{figure}
 
 \subsection{My Compiler}
+
+\subsubsection{Rust}
 
 My compiler is implemented in Rust.
 I chose Rust as it is a recently developed but stable language, interestingly it also has a focus
 on formal verification, but not with refinement types.
 It also has a vast library ecosystem and features such as variants and advanced pattern matching
 which greatly help with a project like a compiler.
+Code written in Rust is responsible for receiving the input program and producing a series of SMT
+programs for Z3 and a bytecode program for LLVM.
+It also interprets the results from Z3 as they determine if there is a type checking error.
 
-I chose to compile my language to LLVM (which Rust coincidentally also compiles to) instead of
+\subsubsection{LLVM}
+
+I chose to compile Refine to LLVM (which Rust coincidentally also compiles to) instead of
 directly to any machine code.
 LLVM is another relatively recent technology which enables developers to write compilers which can
 target a wide array of architectures with much less effort than was historically needed.
 It also is highly optimised and when undertaking the project I was aware that I probably wouldn't
 have time to optimise the compiler much.
+Once Rust has generated the LLVM bytecode, I run the \texttt{llc} and \texttt{gcc} to compile the
+bytecode and link it into a standalone executable.
+
+\subsubsection{Z3}
 
 The third big recent technology I made use of was the Z3 SMT solver, which I tasked with formally
 proving programs were sound once my type checker had reduced the problem down to first order SAT.
+
+\bigskip
 
 Learning how to use each of these technologies was very enjoyable, and tied in with a lot of the
 courses I've taken over the last 2 years.
@@ -233,5 +257,5 @@ IR bytecode generation, linking.
 The type checking stage is split further into several stages as it is the most complex due to the
 complexity of the type system.
 The parsing, labelling and IR bytecode generation stages are not particularly complicated, however
-learning to use LLVM for code generation took quite some time and because the language is functional,
+learning to use LLVM for code generation took quite some time and because Refine is functional,
 compiling to assembly is not as straightforward as it would be for a procedural language.
