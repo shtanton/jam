@@ -8,7 +8,7 @@ and after trying to implement Denney's typing rules directly, I realised that th
 proceed would be to move as much functionality as possible to an SMT solver.
 My implementation draws a lot of inspiration from the implementation of a similar calculus by
 Aguirre \cite{aguirre16}.
-I'll use an example in this chapter to explain how to translation works, the example I'll be
+I'll use an example in this chapter to explain how the translation works, the example I'll be
 trying to prove is $let\ n: (n:u8) n > 3 = 5\ in\ n$.
 After the syntactic sugar is removed, we are left with the program
 $(\lambda n: (n:u8) n > 3 . n)\ 5$.
@@ -406,14 +406,14 @@ The rule I keep is
 
 The compiler is able to reason with this rule by determining in the labelling pass what the type
 $\phi[n]$ is, and then it adds 3 type judgements based on $\phi[n]$ for $n$, $t$ and $t'$ and
-replaces the occurance of $u8rec\ t\ t'\ n$ with a variable of type $\phi[n]$.
-This means that after the lambda lifting pass, all occurances of $u8rec$ are gone so the translation
+replaces the occurence of $u8rec\ t\ t'\ n$ with a variable of type $\phi[n]$.
+This means that after the lambda lifting pass, all occurences of $u8rec$ are gone so the translation
 to SMT doesn't need to be able to deal with them.
 This approach effectively forces the user to provide the base case and inductive hypothesis explicitly,
 as the compiler gets the definition of $\phi[n]$ from the term $t'$ using the previously mentioned
 utility function \texttt{arg\_type}.
 
-To see that we don't lose the power of $u8rec$ when we lose these axioms, consider for either that
+To see that we don't lose the power of $u8rec$ when we lose these axioms, consider for example that
 we wish to show that some $u8rec$ term has a value $t$.
 We could expand on this problem to try to show that $u8rec\ t_0\ t'\ n = t[n]$.
 Then we simply rewrite this as $u8rec\ t_0\ t'\ n: (x: \phi)x = t$ to enable us to prove it using
