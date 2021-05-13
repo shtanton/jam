@@ -215,6 +215,13 @@ $\Gamma$ is $x: \Sigma_{y:u8} u8$, $c$ is $\pi_1(x) < \pi_2(x)$ and $\phi$ is $\
 
 \subsection{My Compiler}
 
+A compiler for Refine has 2 main jobs.
+First, as with any compiler, to produce an executable which can be run to reach an outcome in line
+with the semantics of the language.
+Secondly, and more interestingly, either prove that any term which is type guarded must evaluate
+at runtime to a value acceptable to that type, or find a counterexample to present to the user.
+My compiler does both of these jobs using a wide variety of techniques and technologies.
+
 \subsubsection{Rust}
 
 My compiler is implemented in Rust.
@@ -241,6 +248,15 @@ bytecode and link it into a standalone executable.
 
 The third big recent technology I made use of was the Z3 SMT solver, which I tasked with formally
 proving programs were sound once my type checker had reduced the problem down to first order SAT.
+I do this by giving Z3 a set of constraints within which it tries to find a satisfying assignment.
+These constraints force it to find a counterexample to the type guards of the Refine program so
+either it will find such a counterexample or prove that it doesn't exist.
+The largest hurdle is translating a Refine program to a series of SMT programs for Z3.
+Z3 lacks various important features like higher order functions and lambda abstractions which I
+was forced to find ways to remove without changing the semantics of a term to allow Z3 to understand
+said term.
+I discuss the difficulties of this problem in much greater detail in the section on
+Type Checker Implementation.
 
 \bigskip
 

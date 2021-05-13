@@ -4,7 +4,6 @@
 
 The compiler is split into several passes, the first generates an abstract syntax tree, while the others
 operate on the tree.
-In total, there are 4 passes (not including type checking or linking, as I don't discuss those here).
 
 \begin{itemize}
     \item \textbf{Parsing} -
@@ -12,15 +11,15 @@ In total, there are 4 passes (not including type checking or linking, as I don't
     This is a very standard stage common to almost all compilers, as doing later stages on a syntax tree
     is substantially easier than trying to work with a string.
     \item \textbf{Labelling} -
-    Replacing string identifiers for variables with globally unique integer identifiers and
-    labelling every term with data about which variables it depends on and its type.
-    This means the later stages can assume ids are unique, and makes programming environment capture for
-    closures or lambda lifting more straightforward.
+    Replacing string identifiers with globally unique integer identifiers and
+    labelling every term with its free variables and its type.
+    This massively simplifies later stages as necessary information is already on hand.
     \item \textbf{Type Checking} -
     Checking that the labelled AST is valid.
     This doesn't change the AST in any way, but the compiler won't proceed to the next stages if it fails the
     type checks.
-    Chapter 2 is focused on the type checker so I don't discuss it any more here.
+    I don't discuss the implementation of the type checker here as I have a more thorough explanation
+    in another section.
     \item \textbf{Thunking} -
     This is a tiny pass to produce the call-by-name semantics by replacing arguments with thunks.
     \item \textbf{Code Generation} -
@@ -100,14 +99,14 @@ While traversing the AST, we keep a record of the types of variables, and the id
 in scope.
 This means that each time a variable is referenced, the string identifier can be replaced with the appropriate
 unique integer identifier.
-Also, the (unrefined) type and free variables used for each term can be used by combining
+Also, the (unrefined) type and free variables used for each term can be computed by combining
 the information from its subterms.
 Having all the extra information easily available makes the later stages of the compiler much simpler,
 for example, the type checker and code generator both need to the free variables for each abstraction term.
 
 \subsection{Thunking}
 
-This pass does a number of adjustements, with the goal of replacing a arguments, $v$ with abstractions,
+This pass does a number of adjustements, with the goal of replacing any argument, $v$ with an abstraction,
 $\lambda x: \textbf{1} . v$.
 There are several other changes that need to take place for the syntax tree to remain consistent under this
 change.
@@ -135,7 +134,7 @@ I chose to use the LLVM toolchain to implement my compiler.
 It is a recently developed intermediate representation language, along with a compiler and interpreter,
 with the goal of being a target for compilation for new languages, which can then be compiled down to
 a wide variety of architectures.
-Using LLVM both reduced the amount of work I needed to do, it does for me:
+LLVM removed a lot of work I otherwise would have needed to do myself:
 \begin{itemize}
     \item Optimisation -
     Dead code elimination,
@@ -146,9 +145,11 @@ Using LLVM both reduced the amount of work I needed to do, it does for me:
     I have done no optimisation myself.
     \item Structures/Records -
     LLVM has structures as a type, and provides instructions for working with them.
+    Using LLVM structs is a lot easier than doing the pointer arithmetic necessary for implementing
+    structs myself.
     \item Functions -
-    Some instruction sets have functions, but LLVM functions are called similarly to high level functions
-    and can take or return large types like structures.
+    Some instruction sets have functions, but LLVM functions can take or return large types like
+    structures.
     \item Targeting Several Platforms -
     Had I written my compiler to compile straight to assembly for an architecture, code in Refine could
     only have been executed on that hardware.
@@ -156,7 +157,7 @@ Using LLVM both reduced the amount of work I needed to do, it does for me:
 \end{itemize}
 I extensively used the LLVM Language Reference Manual \cite{llvm} to determine which LLVM instructions
 would correspond to each of Refine's constructs.
-For most this was straightforward, all of my constants other than $u8rec$ have obvious representations
+This was mostly straightforward, all of my constants other than $u8rec$ have obvious representations
 in LLVM, $\ast$ is represented using a null byte, $u8$ and $bool$ are also both bytes with $bool$ using
 $0$ and $1$ as $false$ and $true$ respectively and 2-tuples map well onto LLVM structures.
 
@@ -176,7 +177,7 @@ This has the disadvantage that if any of the data changes since the closure is c
 correct, however, all state is immutable in Refine so this isn't possible.
 
 Because a closure may outlive any function, I chose to allocate it on the heap, which has the added problem
-of cleaning it up by freeing the memory once I'm done with it.
+of freeing the memory once I'm done with it.
 The most sensible way to solve this problem (and the solution I chose) is to use a garbage collector to do this.
 There is also the problem that since the closure contains a function which takes as an argument the closure,
 the type of the closure is contained within itself so cannot be expressed.
@@ -184,9 +185,11 @@ Fortunately, I can use a byte pointer as the type of the closure in the function
 before and after passing it.
 Finally there is the problem that 2 closures might have the same type in Refine, but due to differences
 in captured variables, have different types in LLVM.
-To get around this, once formed the closures are bitcast into a pointer to a struct containing only the
-function pointer (to allow them to be called), and then inside the function, they are cast back to
-the full environment to access the elements.
+What would the type be for a function that could take either of these closures as a parameter?
+The solution is that all closures are are bitcast to pointers to structs with only function pointers,
+then it is bitcast back in the full environment in the body of the function.
+This means all closures with the same unrefined type also have the same type in LLVM, allowing them
+to be used interchangeably.
 
 An example function written in LLVM bytecode is shown in Figure \ref{fig:closure}.
 \begin{figure}
@@ -209,7 +212,8 @@ fn_block:
 \end{figure}
 Here is a function which will become a closure that takes a $u8$ and returns a $u8 \rightarrow u8$.
 Line 1 casts the captured variables from its environment into the appropriate type.
-Line 2 allocates space for a closure which is being constructed (8 bytes for a 64 bit pointer).
+Line 2 allocates space for a closure which is being constructed
+(8 bytes for a 64 bit function pointer, and no environment).
 Line 3 casts the new pointer to the type of the closure.
 Lines 4 and 5 store the pointer to the appropriate function in the new closure.
 Line 6 returns the closure.

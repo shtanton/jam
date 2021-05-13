@@ -8,8 +8,8 @@ research.
 Other projects investigating refinement types as a verification tool include F* and Liquid Haskell,
 although there are a few others.
 
-Something that struck me from investigating these was that these options was how they all used
-an SMT solver to verify the types \cite{vazouSJ14}.
+Something that struck me from my reading was that these options all used an SMT solver to verify
+the types \cite{vazouSJ14}.
 A language which didn't do this could potentially take advantage of the fact that refinement types
 don't map perfectly onto first order logic for SMT.
 This could enable them to check a wider variety of properties, or perhaps simplify the type checking.
@@ -19,10 +19,9 @@ project unfortunately.
 While developing my project, I devoted little time to convenience features for the user.
 With more time I would have liked to implement some type inference.
 This would have been particularly useful for languages with a typing system such as mine,
-as frequently, in order to type check, the type of a term might be such that there is only one
-value, so often looked like $t: (x: \sigma) x =_\sigma t$.
+where a type can be very verbose.
 
-Other refinement typed languages also have features to proof totality of recursive functions,
+Other refinement typed languages also have features to prove the totality of recursive functions,
 which I chose not to implement and instead design the language to prevent implementing recursive
 functions at all.
 I implemented $u8rec$ as an example of a construct which covers one type of recursion while

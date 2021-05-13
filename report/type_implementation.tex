@@ -2,16 +2,15 @@
 
 \subsection{Implementation Overview}
 
-After reading various papers describing how other similarly typed languages go about type checking,
-(\textit{references go here})
+After reading various papers describing how other similarly typed languages go about type checking
+\cite{mengP08}\cite{blanchetteBP13}\cite{barbosaROTB19},
 and after trying to implement Denney's typing rules directly, I realised that the correct way to
 proceed would be to move as much functionality as possible to an SMT solver.
 My implementation draws a lot of inspiration from the implementation of a similar calculus by
 Aguirre \cite{aguirre16}.
-I'll use an example in this chapter to explain how the translation works, the example I'll be
-trying to prove is $let\ n: (n:u8) n > 3 = 5\ in\ n$.
-After the syntactic sugar is removed, we are left with the program
-$(\lambda n: (n:u8) n > 3 . n)\ 5$.
+To better explain how to type checker works, I'll use the example of
+$let\ n: (n:u8) n > 3 = 5\ in\ n$ throughout the chapter which after the syntactic sugar is removed
+leaves $(\lambda n: (n:u8) n > 3 . n)\ 5$.
 
 \subsection{Find Type Guards}
 
@@ -20,15 +19,17 @@ that terms satisfy certain conditions.
 There are 5 ways in which a type guard can be applied, but 4 of them don't involve refinement types.
 
 \begin{itemize}
-    \item Applying a function defined by the user.
-    The function has a type guard on arguments passed to it which is defined by the programmer.
-    This is the only type guard that can have refinement types.
-    \item Using $\pi_i$ to extract a value from a 2-tuple.
+    \item Applying a function defined by the user -
+    The user gives the function a type guard on the parameter which any argument must satisfy.
+    This is the main type guard that can have refinement types.
+    \item Using $\pi_i$ to extract a value from a 2-tuple -
     We need to check that the term being extracted from is in fact a 2-tuple.
     \item Calling a constant.
-    Arguments to constants in Refine are restricted to one of the unrefined types.
+    Arguments to constants in Refine are restricted to one of the unrefined types
+    except $ite$ and $u8rec$ which are handled separately.
     \item Calling a predicate.
     Similarly, arguments to predicates are restricted to one of the unrefined types.
+    For example, $<$ requires both arguments to be $u8$s.
     \item The whole program must be of type $u8$.
     This will be the exit code once the program terminates.
     Further development would probably lead to changing the program to be of a more versatile type,
@@ -37,19 +38,18 @@ There are 5 ways in which a type guard can be applied, but 4 of them don't invol
 
 The type guards that don't use refinement types actually function identically to the
 $\lambda^{\times \rightarrow}$ calculus, so I type check those while doing the labelling pass.
-This pass also gives every variable a unique id which simplifies things later on, so our example
-becomes $(\lambda n: (m: u8) m > 3 . n)\ 5$.
-Type checking calls to user defined functions is more challenging as they make use of refinement
+This pass also uniquely identifies every variable and computes the free variables and unrefined
+type of every term, so our example becomes $(\lambda n: (m: u8) m > 3 . n)\ 5$.
+Type checking applications of user defined functions is more challenging as they make use of refinement
 types, and the first step is to find all instances of these so the compiler can check them individually.
 For this I wrote a function \texttt{find\_applications} which traverses the labelled syntax tree
 and finds applications.
 This finds the terms used in the application, and the context around the application, but the compiler
-needs the type of the parameter of the function to be able to check the argument term against it.
-Fortunately, this is not impossible.
-
-Type inference for refinement types is very challenging, but we don't need complete type inference,
-just the ability to infer the parameter type of a term.
-This is still tricky, and I do so using 2 utility functions \texttt{arg\_type} and \texttt{arg\_type\_of\_type}.
+needs the type of the parameter of the function to be able to check the argument term against it,
+which isn't always easily found.
+Fortunately, for refinement types, inferring the type of a parameter for a term is far easier than
+inferring the whole type of a term.
+I do this with the functions \texttt{arg\_type} and \texttt{arg\_type\_of\_type}.
 
 \subsubsection{arg\_type}
 
@@ -58,7 +58,8 @@ This is still tricky, and I do so using 2 utility functions \texttt{arg\_type} a
 \begin{itemize}
     \item An expression, which it will try to find the parameter type of, assuming it has undergone
     some transformations.
-    \item The context to allow it to get the types of variables it needs.
+    \item The context to allow it to get the types of variables it needs (terms are already annotated
+    with unrefined types but we want the full type of the parameter, with refinements).
     \item A sequence of transformations, each of which could be a $\pi_1$, $\pi_2$ or an application.
 \end{itemize}
 
@@ -87,14 +88,14 @@ $4: (x: u8) x > \pi_1(f) \land x < 5$.
         \textbf{Function} & \textbf{Expression} & \textbf{Transformations}\\\hline
         \texttt{arg\_type} & $\pi_2(f)\ 5$ & $nil$\\\hline
         \texttt{arg\_type} & $\pi_2(f)$ & $Arg(5)$\\\hline
-        \texttt{arg\_type} & $f$ & $Second(f), Arg(5)$\\\hline
+        \texttt{arg\_type} & $f$ & $\pi_2(f), Arg(5)$\\\hline
         \multicolumn{3}{|c|}{
             \textbf{Returns}
         }\\\hline
         \multicolumn{3}{|l|}{
             \texttt{arg\_type\_of\_type(}
             $\Sigma_{m:u8} \Pi_{n:(n:u8) n > m} \Pi_{x:(x:u8) x > m \land x < n} u8$, \quad
-            $Second(f), Arg(5)$
+            $\pi_2(f), Arg(5)$
             \texttt{)}
         }\\\hline
         \multicolumn{3}{|l|}{
@@ -143,7 +144,8 @@ type guards in Table \ref{tab:example_guards}
 We have now reduced our goal to something close to what an SMT solver can do:
 
 \begin{quote}
-    Find an environment that satisfies the context such that the term is not of the required type.
+    Find an environment that satisfies the context such that the term is not of the required type,
+    or prove no such environment exists.
 \end{quote}
 
 \subsection{Lambda Lifting}
@@ -263,7 +265,7 @@ from the $\lambda^{\times \rightarrow}$ calculus.
 In order to generate the assertions, I need to split a type into an unrefined type, and a single
 predicate which refines it into the actual type.
 I do this using a \texttt{simplify} function that passes \textbf{1}, $bool$ and $u8$ through,
-but traverses down 2-tuple, functions and refined types to combine all of the refinements into one
+but traverses down 2-tuple, function and refined types to combine all of the refinements into one
 predicate.
 Denney conveniently showed how to represent 2-tuple and function types as refined types in his paper
 by interpreting
@@ -285,7 +287,9 @@ to get a predicate that covers all of them.
 Once we have this, it becomes straightforward to generate all the assertions for the SMT program.
 
 Continuing the example, Table \ref{tab:example_smt} shows the SMT programs generated for each
-judgement.
+judgement (remember that the program type checks successfully when Z3 \textit{fails} to satisfy all
+programs).
+
 \begin{table}
     \centering
     \begin{tabular}{|l|l|l|}
@@ -321,7 +325,7 @@ judgement.
 \end{table}
 A lot of the assertions in Table \ref{tab:example_smt} seem trivial.
 This is because for a judgement like $3:u8$, the unrefined type of $3$ has already been checked in
-the labelling stage, and there are no refinements on the type so there is no more to check.
+the labelling stage, and there are no refinements on the type so the assertion is simply $true$.
 These extra assertions make little difference to the performance of the solver, so I leave them
 in rather than finding a way to avoid them.
 
@@ -386,8 +390,8 @@ We could do so using 2 of Denney's axiom schemas which describe equalities.
 This makes it very easy to encode uses of $u8rec$ as they can be translated directly, however, when
 we try running Z3 on a program like this we encounter a problem, it runs for a while and then returns
 unknown.
-This is because Z3 cannot prove inductive facts (\textit{Do I need a citation for this?}) which is
-required to prove any property making use of both of these rules.
+This is because Z3 cannot prove inductive facts which is required to prove any property making use
+of both of these rules.
 
 \subsubsection{Type Focused Implementation Of u8rec}
 
@@ -415,7 +419,7 @@ utility function \texttt{arg\_type}.
 
 To see that we don't lose the power of $u8rec$ when we lose these axioms, consider for example that
 we wish to show that some $u8rec$ term has a value $t$.
-We could expand on this problem to try to show that $u8rec\ t_0\ t'\ n = t[n]$.
+More generally, we are trying to show that $u8rec\ t_0\ t'\ n = t[n]$.
 Then we simply rewrite this as $u8rec\ t_0\ t'\ n: (x: \phi)x = t$ to enable us to prove it using
 the one (U8REC) rule.
 In the most extreme case, this requires the user to use a type which can only have one possible value
@@ -442,15 +446,15 @@ which has stronger requirements on the types involved, using a proof tree such a
         \infer2{(\lambda x: (x:\phi)x=t' . t) t' : (y:\psi)y=t[t'/x]}
         \infer1{(\lambda x: (x:\phi)x=t' . t) t' = t[t'/x]}
     \end{prooftree}
-    \caption{An Alternative To ($\lambda$-$\beta$-EQ)}
+    \caption{An Alternative Proof Of $(\lambda x: \phi . t) t' = t[t'/x]$ Without ($\lambda$-$\beta$-EQ)}
     \label{fig:beta_eq}
 \end{figure}
 
 \subsection{Optimisation}
 
-My compiler has a lot of room for optimisation, but it was not a focus for me, as the role of my
-compiler is much simpler than that of Z3.
-Running the SMT solver will always be the most time consuming part of the type checking.
+My compiler has a lot of room for optimisation, but it was not a focus for me.
+The role of my compiler is much simpler than that of Z3,
+so running the SMT solver will always be the most time consuming part of the type checking.
 There are various computations such as computing the unrefined type of an expression after the lambda
 abstraction stage, which are redone many times and would benefit from being cached.
 Also once split into judgements, they are checked independently and in sequence, even though there
