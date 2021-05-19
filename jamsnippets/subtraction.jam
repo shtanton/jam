@@ -1,0 +1,8 @@
+(let
+	sub: (fn x:u8, y:u8 z:u8{(= u8 x (+ y z))})
+		= (fn x:u8, y:u8
+			(u8rec x
+				(fn y:u8, z:z:u8{(= u8 x (+ y z))} (pred z))
+				y))
+	in
+	(sub (10) (3)))

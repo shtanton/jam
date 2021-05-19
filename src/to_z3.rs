@@ -240,7 +240,8 @@ impl<'a> Z3Translater<'a> {
                 self.define_var(id, typ)?;
                 let body = self.translate_expression(*body)?;
                 let x = self.get_var(id)?;
-                forall_const(self.ctx, &[&x], &[], &body)
+                let tmp = forall_const(self.ctx, &[&x], &[], &body);
+                tmp
             }
             Expression::False => {
                 let bool_ast = Bool::from_bool(self.ctx, false);

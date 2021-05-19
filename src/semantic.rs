@@ -330,7 +330,7 @@ impl Type {
         }
     }
 
-    fn env(&self) -> ImHashMap<Identifier, UnrefinedType> {
+    pub fn env(&self) -> ImHashMap<Identifier, UnrefinedType> {
         match self {
             Type::One | Type::Bool | Type::U8 => ImHashMap::new(),
             Type::Product(id, contents) => {

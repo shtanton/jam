@@ -213,14 +213,27 @@ impl<'a> LambdaLifter<'a> {
                 self.lift_expression(contents.2),
             ))),
             SExpressionKind::U8Rec(id, iter_type, contents) => {
+                let environment = iter_type
+                    .env()
+                    .clone()
+                    .without(&id)
+                    .into_iter()
+                    .collect::<Vec<_>>();
                 let iter_type = self.lift_type(iter_type);
-                let typ = Type::Function(id, Box::new((Type::U8, iter_type)));
+                let mut typ = Type::Function(id, Box::new((Type::U8, iter_type)));
+                for (param_id, param_type) in environment.iter().rev() {
+                    typ = Type::Function(*param_id, Box::new((self.refine_type(param_type), typ)));
+                }
                 let count = self.lift_expression(contents.2);
                 let var = self.next_id();
-                let expr = Expression::Application(Box::new((
-                    Expression::Variable(var, typ.unrefine()),
-                    count,
-                )));
+                let mut expr = Expression::Variable(var, typ.unrefine());
+                for (param_id, param_type) in environment.into_iter() {
+                    expr = Expression::Application(Box::new((
+                        expr,
+                        Expression::Variable(param_id, param_type),
+                    )));
+                }
+                expr = Expression::Application(Box::new((expr, count)));
                 self.context.push((var, typ));
                 expr
             }
