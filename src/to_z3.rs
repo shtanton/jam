@@ -95,6 +95,22 @@ impl<'a> Z3Translater<'a> {
                 let one = BV::from_u64(self.ctx, 1, 8);
                 bv_arg.bvsub(&one).into()
             }
+            Constant::Add => {
+                let bv_args = args
+                    .iter()
+                    .map(|arg| arg.as_bv())
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or(())?;
+                bv_args[0].bvadd(&bv_args[1]).into()
+            }
+            Constant::Sub => {
+                let bv_args = args
+                    .iter()
+                    .map(|arg| arg.as_bv())
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or(())?;
+                bv_args[0].bvsub(&bv_args[1]).into()
+            }
         })
     }
 
@@ -105,6 +121,38 @@ impl<'a> Z3Translater<'a> {
     ) -> Result<Dynamic<'a>, ()> {
         Ok(match predicate {
             Predicate::Prop => args.pop().ok_or(())?,
+            Predicate::LessThan => {
+                let bv_args = args
+                    .iter()
+                    .map(|arg| arg.as_bv())
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or(())?;
+                bv_args[0].bvult(&bv_args[1]).into()
+            }
+            Predicate::LessThanEq => {
+                let bv_args = args
+                    .iter()
+                    .map(|arg| arg.as_bv())
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or(())?;
+                bv_args[0].bvule(&bv_args[1]).into()
+            }
+            Predicate::GreaterThan => {
+                let bv_args = args
+                    .iter()
+                    .map(|arg| arg.as_bv())
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or(())?;
+                bv_args[0].bvugt(&bv_args[1]).into()
+            }
+            Predicate::GreaterThanEq => {
+                let bv_args = args
+                    .iter()
+                    .map(|arg| arg.as_bv())
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or(())?;
+                bv_args[0].bvuge(&bv_args[1]).into()
+            }
         })
     }
 

@@ -214,7 +214,10 @@ impl<'a> ToSmt<'a> {
     fn translate_expression(&mut self, expr: LExpression) -> Result<Expression, ()> {
         Ok(match expr {
             LExpression::Ast => Expression::Ast,
-            LExpression::Variable(id, _) => Expression::Variable(id),
+            LExpression::Variable(id, typ) => {
+                self.register_type(&typ);
+                Expression::Variable(id)
+            }
             LExpression::Call(constant, args) => Expression::Call(
                 Function::Constant(constant),
                 args.into_iter()
@@ -450,7 +453,8 @@ impl<'a> ToSmt<'a> {
             declarations.push(Declaration { id: defn.0, typ });
             assertions.push(prop);
         }
-        let (id, _, mut prop) = self.simplify(typ)?;
+        let (id, unrefined_type, mut prop) = self.simplify(typ)?;
+        self.register_type(&unrefined_type);
         prop.substitute(&self.translate_expression(expression)?, id);
         assertions.push(Expression::Call(Function::Not, vec![prop]));
         Ok(Smt {

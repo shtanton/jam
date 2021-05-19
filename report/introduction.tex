@@ -183,6 +183,12 @@ I've added some extra terms using syntactic sugar to make life easier for the us
     $f\ t_1\ ...\ t_n \coloneqq (...(f\ t_1)\ ...)\ t_n$
 
     $let\ x_1: \phi_1 = t_1, ..., x_n: \phi_n = t_n\ in\ u \coloneqq (\lambda x_1: \phi_1 .\ ...(\lambda x_n: \phi_n . u)\ t_n...)\ t_1$
+
+    $P \land Q \coloneqq (P \supset (Q \supset false)) \supset false$
+
+    $P \lor Q \coloneqq (P \supset false) \supset Q$
+
+    $\lnot P \coloneqq P \supset false$
 \end{center}
 
 I define Refine's operational semantics in line with that of the $\lambda^{\times \rightarrow}$ calculus.

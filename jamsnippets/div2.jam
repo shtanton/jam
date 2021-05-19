@@ -1,2 +1,11 @@
 (let
-	_div2: (fn n:u8 <m:m:u8{(=> 
+	div2': (fn n:u8 <m:m:u8{(or (= u8 n (+ m m)) (= u8 n (succ (+ m m))))} m':u8{(= u8 n (+ m m'))}>)
+		= (fn n:u8
+			(u8rec <(0) (0)>
+				(fn x:u8, p:<m:m:u8{(or (= u8 x (+ m m)) (= u8 x (succ (+ m m))))} m':u8{(= u8 x (+ m m'))}>
+					<(second p) (succ (first p))>)
+				n))
+	div2: (fn n:u8 m:u8{(or (= u8 n (+ m m)) (= u8 n (succ (+ m m))))})
+		= (fn n:u8 (first (div2' n)))
+	in
+	(div2 (11)))

@@ -2,7 +2,7 @@ extern crate nom;
 use crate::semantic::{Expression as SExpression, UnrefinedType};
 use nom::{
     alt, char,
-    character::complete::{alphanumeric0, digit1, multispace0 as ws0, multispace1 as ws1},
+    character::complete::{digit1, multispace0 as ws0, multispace1 as ws1},
     complete, do_parse,
     error::{Error, ErrorKind},
     many0, map, map_res, named, preceded, separated_list0, separated_list1, tag, tuple, Err,
@@ -35,12 +35,20 @@ pub enum Proposition {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Predicate {
     Prop,
+    LessThan,
+    LessThanEq,
+    GreaterThan,
+    GreaterThanEq,
 }
 
 impl fmt::Display for Predicate {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Predicate::Prop => write!(fmt, "prop")?,
+            Predicate::LessThan => write!(fmt, "<")?,
+            Predicate::LessThanEq => write!(fmt, "<=")?,
+            Predicate::GreaterThan => write!(fmt, ">")?,
+            Predicate::GreaterThanEq => write!(fmt, ">=")?,
         }
         Ok(())
     }
@@ -50,6 +58,14 @@ impl Predicate {
     pub fn accepts_args(&self, args: &Vec<SExpression>) -> bool {
         match self {
             Predicate::Prop => args.len() == 1 && args[0].typ == UnrefinedType::Bool,
+            Predicate::LessThan
+            | Predicate::LessThanEq
+            | Predicate::GreaterThan
+            | Predicate::GreaterThanEq => {
+                args.len() == 2
+                    && args[0].typ == UnrefinedType::U8
+                    && args[1].typ == UnrefinedType::U8
+            }
         }
     }
 }
@@ -66,6 +82,8 @@ pub enum Constant {
     U8(u8),
     Succ,
     Pred,
+    Add,
+    Sub,
 }
 
 impl Constant {
@@ -78,7 +96,9 @@ impl Constant {
             | Constant::Implies
             | Constant::DblImplies
             | Constant::Not => UnrefinedType::Bool,
-            Constant::U8(_) | Constant::Succ | Constant::Pred => UnrefinedType::U8,
+            Constant::U8(_) | Constant::Succ | Constant::Pred | Constant::Add | Constant::Sub => {
+                UnrefinedType::U8
+            }
         }
     }
 
@@ -106,6 +126,12 @@ impl Constant {
                 }
                 args[0].typ == UnrefinedType::U8
             }
+            Constant::Add | Constant::Sub => {
+                if args.len() != 2 {
+                    return false;
+                }
+                args[0].typ == UnrefinedType::U8 && args[1].typ == UnrefinedType::U8
+            }
         }
     }
 }
@@ -123,6 +149,8 @@ impl fmt::Display for Constant {
             Constant::U8(v) => write!(fmt, "{}", v),
             Constant::Succ => write!(fmt, "succ"),
             Constant::Pred => write!(fmt, "pred"),
+            Constant::Add => write!(fmt, "+"),
+            Constant::Sub => write!(fmt, "-"),
         }
     }
 }
@@ -176,10 +204,21 @@ named!(typ_refinement(&str) -> Type, do_parse!(
 
 named!(typ(&str) -> Type, alt!(typ_bool |  typ_product | typ_function | typ_refinement | typ_one | typ_u8));
 
+fn identifier_chars(input: &str) -> IResult<&str, &str> {
+    for (i, c) in input.chars().enumerate() {
+        if !(c.is_ascii_alphanumeric() || c == '\'' || c == '_' || c == '-') {
+            let (ident, input) = input.split_at(i);
+            return Ok((input, ident));
+        }
+    }
+    let (ident, input) = input.split_at(input.len());
+    Ok((input, ident))
+}
+
 fn identifier(input: &str) -> IResult<&str, Identifier> {
     if let Some(c) = input.chars().nth(0) {
         if c.is_ascii_alphabetic() {
-            let (input, ident) = alphanumeric0(input)?;
+            let (input, ident) = identifier_chars(input)?;
             Ok((input, ident.to_string()))
         } else {
             Err(Err::Error(Error {
@@ -247,6 +286,28 @@ named!(proposition_and(&str) -> Proposition, do_parse!(
     ))
 ));
 
+named!(proposition_or(&str) -> Proposition, do_parse!(
+    char!('(') >> ws0 >> tag!("or") >> ws1 >>
+    left: proposition >> ws1 >>
+    right: proposition >> ws0 >> char!(')') >>
+    (Proposition::Implies(
+        Box::new(Proposition::Implies(
+            Box::new(left),
+            Box::new(Proposition::False),
+        )),
+        Box::new(right),
+    ))
+));
+
+named!(proposition_not(&str) -> Proposition, do_parse!(
+    char!('(') >> ws0 >> tag!("not") >> ws1 >>
+    arg: proposition >> ws0 >> char!(')') >>
+    (Proposition::Implies(
+        Box::new(arg),
+        Box::new(Proposition::False),
+    ))
+));
+
 named!(proposition(&str) -> Proposition, alt!(
     proposition_false |
     proposition_implies |
@@ -254,11 +315,17 @@ named!(proposition(&str) -> Proposition, alt!(
     proposition_equal |
     proposition_subtype |
     proposition_call |
-    proposition_and
+    proposition_and |
+    proposition_or |
+    proposition_not
 ));
 
 named!(predicate(&str) -> Predicate, alt!(
-    map!(tag!("bool"), |_| Predicate::Prop)
+    map!(tag!("bool"), |_| Predicate::Prop) |
+    map!(tag!("<="), |_| Predicate::LessThanEq) |
+    map!(tag!(">="), |_| Predicate::GreaterThanEq) |
+    map!(tag!("<"), |_| Predicate::LessThan) |
+    map!(tag!(">"), |_| Predicate::GreaterThan)
 ));
 
 named!(parse_u8(&str) -> u8, map_res!(
@@ -276,7 +343,9 @@ named!(constant(&str) -> Constant, alt!(
     map!(tag!("not"), |_| Constant::Not) |
     map!(parse_u8, |v| Constant::U8(v)) |
     map!(tag!("succ"), |_| Constant::Succ) |
-    map!(tag!("pred"), |_| Constant::Pred)
+    map!(tag!("pred"), |_| Constant::Pred) |
+    map!(tag!("+"), |_| Constant::Add) |
+    map!(tag!("-"), |_| Constant::Sub)
 ));
 
 named!(expression_variable(&str) -> Expression, map!(identifier, Expression::Variable));
@@ -324,7 +393,7 @@ named!(expression_abstraction(&str) -> Expression, do_parse!(
 named!(expression_application(&str) -> Expression, do_parse!(
     char!('(') >> ws0 >>
     f: expression >> ws1 >>
-    args: separated_list1!(tuple!(ws0, char!(','), ws0), expression) >> ws0 >> char!(')') >>
+    args: separated_list1!(ws1, expression) >> ws0 >> char!(')') >>
     ({
         let mut expr = f;
         for arg in args.into_iter() {

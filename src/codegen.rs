@@ -5,11 +5,11 @@ use llvm_sys::bit_writer::LLVMWriteBitcodeToFile;
 use llvm_sys::core::{
     LLVMAddAttributeAtIndex, LLVMAddFunction, LLVMAddIncoming, LLVMAppendBasicBlockInContext,
     LLVMBuildAdd, LLVMBuildAnd, LLVMBuildBitCast, LLVMBuildBr, LLVMBuildCall, LLVMBuildCondBr,
-    LLVMBuildExtractValue, LLVMBuildICmp, LLVMBuildLoad, LLVMBuildNot, LLVMBuildOr, LLVMBuildPhi,
-    LLVMBuildRet, LLVMBuildStore, LLVMBuildStructGEP, LLVMBuildSub, LLVMBuildXor, LLVMConstInt,
-    LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext,
+    LLVMBuildExtractValue, LLVMBuildICmp, LLVMBuildInsertValue, LLVMBuildLoad, LLVMBuildNot,
+    LLVMBuildOr, LLVMBuildPhi, LLVMBuildRet, LLVMBuildStore, LLVMBuildStructGEP, LLVMBuildSub,
+    LLVMBuildXor, LLVMConstInt, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext,
     LLVMCreateStringAttribute, LLVMDisposeBuilder, LLVMDisposeModule, LLVMFunctionType,
-    LLVMGetParam, LLVMIntTypeInContext, LLVMModuleCreateWithName, LLVMPointerType,
+    LLVMGetParam, LLVMGetUndef, LLVMIntTypeInContext, LLVMModuleCreateWithName, LLVMPointerType,
     LLVMPositionBuilderAtEnd, LLVMSetTarget, LLVMStructTypeInContext, LLVMVoidTypeInContext,
 };
 use llvm_sys::{LLVMBuilder, LLVMContext, LLVMIntPredicate, LLVMModule, LLVMType, LLVMValue};
@@ -285,6 +285,20 @@ impl CodeGen {
                     let arg = self.gen_expr(arg, builder)?;
                     LLVMBuildSub(builder, arg, LLVMConstInt(arg_type, 1, 0), c_str!("pred"))
                 }
+                Constant::Add => {
+                    let right = args.pop().ok_or(())?;
+                    let left = args.pop().ok_or(())?;
+                    let left = self.gen_expr(left, builder)?;
+                    let right = self.gen_expr(right, builder)?;
+                    LLVMBuildAdd(builder, left, right, c_str!("add"))
+                }
+                Constant::Sub => {
+                    let right = args.pop().ok_or(())?;
+                    let left = args.pop().ok_or(())?;
+                    let left = self.gen_expr(left, builder)?;
+                    let right = self.gen_expr(right, builder)?;
+                    LLVMBuildSub(builder, left, right, c_str!("sub"))
+                }
             },
             ExpressionKind::Variable(id) => self.get_variable(id).ok_or(())?,
             ExpressionKind::Abstraction(id, _, body) => {
@@ -335,13 +349,15 @@ impl CodeGen {
                 let (first, second) = *contents;
                 let first = self.gen_expr(first, builder)?;
                 let second = self.gen_expr(second, builder)?;
-                LLVMConstStructInContext(self.context, [first, second].as_ptr() as *mut _, 2, 0)
+                let empty = LLVMGetUndef(self.get_type(&expr.typ)?);
+                let with_first = LLVMBuildInsertValue(builder, empty, first, 0, c_str!("tuple_1"));
+                LLVMBuildInsertValue(builder, with_first, second, 1, c_str!("tuple_2"))
             }
             ExpressionKind::First(arg) => {
                 LLVMBuildExtractValue(builder, self.gen_expr(*arg, builder)?, 0, c_str!("first"))
             }
             ExpressionKind::Second(arg) => {
-                LLVMBuildExtractValue(builder, self.gen_expr(*arg, builder)?, 1, c_str!("first"))
+                LLVMBuildExtractValue(builder, self.gen_expr(*arg, builder)?, 1, c_str!("second"))
             }
             ExpressionKind::U8Rec(_, _, contents) => {
                 let entry =
