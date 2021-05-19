@@ -94,6 +94,7 @@ pub enum Function {
     Predicate(Predicate),
     Constant(Constant),
     Apply(UnrefinedType, UnrefinedType),
+    Ite,
 }
 
 impl fmt::Display for Function {
@@ -111,6 +112,7 @@ impl fmt::Display for Function {
             Function::Apply(param_type, body_type) => {
                 write!(fmt, "apply_{}->{}", param_type, body_type)?
             }
+            Function::Ite => write!(fmt, "ite")?,
         }
         Ok(())
     }
@@ -279,6 +281,17 @@ impl<'a> ToSmt<'a> {
                     vec![
                         self.translate_expression(contents.0)?,
                         self.translate_expression(contents.1)?,
+                    ],
+                )
+            }
+            LExpression::Ite(contents) => {
+                self.register_type(&contents.1.unrefined_type()?);
+                Expression::Call(
+                    Function::Ite,
+                    vec![
+                        self.translate_expression(contents.0)?,
+                        self.translate_expression(contents.1)?,
+                        self.translate_expression(contents.2)?,
                     ],
                 )
             }

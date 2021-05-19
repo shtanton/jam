@@ -111,6 +111,38 @@ impl<'a> Z3Translater<'a> {
                     .ok_or(())?;
                 bv_args[0].bvsub(&bv_args[1]).into()
             }
+            Constant::LessThan => {
+                let bv_args = args
+                    .iter()
+                    .map(|arg| arg.as_bv())
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or(())?;
+                bv_args[0].bvult(&bv_args[1]).into()
+            }
+            Constant::LessThanEq => {
+                let bv_args = args
+                    .iter()
+                    .map(|arg| arg.as_bv())
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or(())?;
+                bv_args[0].bvule(&bv_args[1]).into()
+            }
+            Constant::GreaterThan => {
+                let bv_args = args
+                    .iter()
+                    .map(|arg| arg.as_bv())
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or(())?;
+                bv_args[0].bvugt(&bv_args[1]).into()
+            }
+            Constant::GreaterThanEq => {
+                let bv_args = args
+                    .iter()
+                    .map(|arg| arg.as_bv())
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or(())?;
+                bv_args[0].bvuge(&bv_args[1]).into()
+            }
         })
     }
 
@@ -220,6 +252,11 @@ impl<'a> Z3Translater<'a> {
             }
             Expression::Ast => self.ast.apply(&[]),
             Expression::Call(fun, args) => match fun {
+                Function::Ite => {
+                    let zargs = self.translate_expressions(args)?;
+                    let cond = zargs[0].as_bool().ok_or(())?;
+                    cond.ite(&zargs[1], &zargs[2])
+                }
                 Function::And => {
                     let zargs = self.translate_expressions_to_bools(args)?;
                     let zargs_ref: Vec<_> = zargs.iter().collect();

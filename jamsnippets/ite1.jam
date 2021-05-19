@@ -1,0 +1,7 @@
+(let
+	sort: (fn p:<x:u8 u8> <x:u8 y:u8{(<= x y)}>)
+		= (fn p:<x:u8 u8>
+			(let x:u8 = (first p) y:u8 = (second p) in
+				(ite (< x y) <x y> <y x>)))
+	in
+	(first (sort <(10) (5)>)))

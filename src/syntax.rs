@@ -84,6 +84,10 @@ pub enum Constant {
     Pred,
     Add,
     Sub,
+    LessThan,
+    LessThanEq,
+    GreaterThan,
+    GreaterThanEq,
 }
 
 impl Constant {
@@ -95,7 +99,11 @@ impl Constant {
             | Constant::Or
             | Constant::Implies
             | Constant::DblImplies
-            | Constant::Not => UnrefinedType::Bool,
+            | Constant::Not
+            | Constant::LessThan
+            | Constant::LessThanEq
+            | Constant::GreaterThan
+            | Constant::GreaterThanEq => UnrefinedType::Bool,
             Constant::U8(_) | Constant::Succ | Constant::Pred | Constant::Add | Constant::Sub => {
                 UnrefinedType::U8
             }
@@ -126,7 +134,12 @@ impl Constant {
                 }
                 args[0].typ == UnrefinedType::U8
             }
-            Constant::Add | Constant::Sub => {
+            Constant::Add
+            | Constant::Sub
+            | Constant::LessThan
+            | Constant::LessThanEq
+            | Constant::GreaterThan
+            | Constant::GreaterThanEq => {
                 if args.len() != 2 {
                     return false;
                 }
@@ -151,6 +164,10 @@ impl fmt::Display for Constant {
             Constant::Pred => write!(fmt, "pred"),
             Constant::Add => write!(fmt, "+"),
             Constant::Sub => write!(fmt, "-"),
+            Constant::LessThan => write!(fmt, "<"),
+            Constant::LessThanEq => write!(fmt, "<="),
+            Constant::GreaterThan => write!(fmt, ">"),
+            Constant::GreaterThanEq => write!(fmt, ">="),
         }
     }
 }
@@ -166,6 +183,7 @@ pub enum Expression {
     First(Box<Expression>),
     Second(Box<Expression>),
     U8Rec(Box<Expression>, Box<Expression>, Box<Expression>),
+    Ite(Box<Expression>, Box<Expression>, Box<Expression>),
 }
 
 named!(typ_bool(&str) -> Type, map!(tag!("bool"), |_| Type::Bool));
@@ -345,7 +363,11 @@ named!(constant(&str) -> Constant, alt!(
     map!(tag!("succ"), |_| Constant::Succ) |
     map!(tag!("pred"), |_| Constant::Pred) |
     map!(tag!("+"), |_| Constant::Add) |
-    map!(tag!("-"), |_| Constant::Sub)
+    map!(tag!("-"), |_| Constant::Sub) |
+    map!(tag!("<"), |_| Constant::LessThan) |
+    map!(tag!("<="), |_| Constant::LessThanEq) |
+    map!(tag!(">"), |_| Constant::GreaterThan) |
+    map!(tag!(">="), |_| Constant::GreaterThanEq)
 ));
 
 named!(expression_variable(&str) -> Expression, map!(identifier, Expression::Variable));
@@ -451,7 +473,16 @@ named!(expression_u8rec(&str) -> Expression, do_parse!(
     (Expression::U8Rec(Box::new(init), Box::new(iter), Box::new(count)))
 ));
 
+named!(expression_ite(&str) -> Expression, do_parse!(
+    char!('(') >> ws0 >> tag!("ite") >> ws1 >>
+    cond: expression >> ws1 >>
+    if_branch: expression >> ws1 >>
+    else_branch: expression >> ws0 >> char!(')') >>
+    (Expression::Ite(Box::new(cond), Box::new(if_branch), Box::new(else_branch)))
+));
+
 named!(expression(&str) -> Expression, alt!(
+    expression_ite |
     expression_u8rec |
     expression_let |
     expression_abstraction |

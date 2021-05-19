@@ -30,6 +30,33 @@ struct CodeGen {
 }
 
 impl CodeGen {
+    unsafe fn small_bool_to_bool(
+        &mut self,
+        small_bool: *mut LLVMValue,
+        builder: *mut LLVMBuilder,
+    ) -> *mut LLVMValue {
+        let true_block =
+            LLVMAppendBasicBlockInContext(self.context, self.fun, c_str!("true_block"));
+        let false_block =
+            LLVMAppendBasicBlockInContext(self.context, self.fun, c_str!("false_block"));
+        let exit = LLVMAppendBasicBlockInContext(self.context, self.fun, c_str!("binop_exit"));
+        LLVMBuildCondBr(builder, small_bool, true_block, false_block);
+        LLVMPositionBuilderAtEnd(builder, true_block);
+        LLVMBuildBr(builder, exit);
+        LLVMPositionBuilderAtEnd(builder, false_block);
+        LLVMBuildBr(builder, exit);
+        LLVMPositionBuilderAtEnd(builder, exit);
+        let bool_type = LLVMIntTypeInContext(self.context, 8);
+        let result = LLVMBuildPhi(builder, bool_type, c_str!("bool"));
+        LLVMAddIncoming(
+            result,
+            [LLVMConstInt(bool_type, 0, 0), LLVMConstInt(bool_type, 1, 0)].as_ptr() as *mut _,
+            [false_block, true_block].as_ptr() as *mut _,
+            2,
+        );
+        result
+    }
+
     unsafe fn thunk_type(&mut self, typ: *mut LLVMType) -> *mut LLVMType {
         LLVMPointerType(
             LLVMStructTypeInContext(
@@ -299,6 +326,62 @@ impl CodeGen {
                     let right = self.gen_expr(right, builder)?;
                     LLVMBuildSub(builder, left, right, c_str!("sub"))
                 }
+                Constant::LessThan => {
+                    let right = args.pop().ok_or(())?;
+                    let left = args.pop().ok_or(())?;
+                    let left = self.gen_expr(left, builder)?;
+                    let right = self.gen_expr(right, builder)?;
+                    let left_lt_right = LLVMBuildICmp(
+                        builder,
+                        LLVMIntPredicate::LLVMIntULT,
+                        left,
+                        right,
+                        c_str!("less_than"),
+                    );
+                    self.small_bool_to_bool(left_lt_right, builder)
+                }
+                Constant::LessThanEq => {
+                    let right = args.pop().ok_or(())?;
+                    let left = args.pop().ok_or(())?;
+                    let left = self.gen_expr(left, builder)?;
+                    let right = self.gen_expr(right, builder)?;
+                    let left_lt_right = LLVMBuildICmp(
+                        builder,
+                        LLVMIntPredicate::LLVMIntULE,
+                        left,
+                        right,
+                        c_str!("less_than_or_eq"),
+                    );
+                    self.small_bool_to_bool(left_lt_right, builder)
+                }
+                Constant::GreaterThan => {
+                    let right = args.pop().ok_or(())?;
+                    let left = args.pop().ok_or(())?;
+                    let left = self.gen_expr(left, builder)?;
+                    let right = self.gen_expr(right, builder)?;
+                    let left_lt_right = LLVMBuildICmp(
+                        builder,
+                        LLVMIntPredicate::LLVMIntUGT,
+                        left,
+                        right,
+                        c_str!("greater_than"),
+                    );
+                    self.small_bool_to_bool(left_lt_right, builder)
+                }
+                Constant::GreaterThanEq => {
+                    let right = args.pop().ok_or(())?;
+                    let left = args.pop().ok_or(())?;
+                    let left = self.gen_expr(left, builder)?;
+                    let right = self.gen_expr(right, builder)?;
+                    let left_lt_right = LLVMBuildICmp(
+                        builder,
+                        LLVMIntPredicate::LLVMIntUGE,
+                        left,
+                        right,
+                        c_str!("greater_than_or_eq"),
+                    );
+                    self.small_bool_to_bool(left_lt_right, builder)
+                }
             },
             ExpressionKind::Variable(id) => self.get_variable(id).ok_or(())?,
             ExpressionKind::Abstraction(id, _, body) => {
@@ -530,6 +613,40 @@ impl CodeGen {
                     prev_acc_thunk,
                     LLVMConstInt(LLVMIntTypeInContext(self.context, 8), 0, 0),
                 )
+            }
+            ExpressionKind::Ite(contents) => {
+                let if_block =
+                    LLVMAppendBasicBlockInContext(self.context, self.fun, c_str!("ite_if"));
+                let else_block =
+                    LLVMAppendBasicBlockInContext(self.context, self.fun, c_str!("ite_else"));
+                let exit =
+                    LLVMAppendBasicBlockInContext(self.context, self.fun, c_str!("ite_exit"));
+                let (cond, if_branch, else_branch) = *contents;
+                let value_type = self.get_type(&if_branch.typ)?;
+                let cond = self.gen_expr(cond, builder)?;
+                let cond_is_zero = LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    cond,
+                    LLVMConstInt(LLVMIntTypeInContext(self.context, 8), 0, 0),
+                    c_str!("cond_is_zero"),
+                );
+                LLVMBuildCondBr(builder, cond_is_zero, else_block, if_block);
+                LLVMPositionBuilderAtEnd(builder, if_block);
+                let if_value = self.gen_expr(if_branch, builder)?;
+                LLVMBuildBr(builder, exit);
+                LLVMPositionBuilderAtEnd(builder, else_block);
+                let else_value = self.gen_expr(else_branch, builder)?;
+                LLVMBuildBr(builder, exit);
+                LLVMPositionBuilderAtEnd(builder, exit);
+                let value = LLVMBuildPhi(builder, value_type, c_str!("ite_value"));
+                LLVMAddIncoming(
+                    value,
+                    [if_value, else_value].as_ptr() as *mut _,
+                    [if_block, else_block].as_ptr() as *mut _,
+                    2,
+                );
+                value
             }
         })
     }

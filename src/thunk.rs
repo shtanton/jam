@@ -93,6 +93,11 @@ impl<'a> Thunker<'a> {
                     self.thunk_expression(contents.2),
                 )),
             ),
+            ExpressionKind::Ite(contents) => ExpressionKind::Ite(Box::new((
+                self.thunk_expression(contents.0),
+                self.thunk_expression(contents.1),
+                self.thunk_expression(contents.2),
+            ))),
         };
         let typ = thunk_function_types(expr.typ);
         Expression { kind, typ, env }

@@ -65,6 +65,7 @@ pub enum Expression {
     Application(Box<(Expression, Expression)>),
     First(Box<Expression>),
     Second(Box<Expression>),
+    Ite(Box<(Expression, Expression, Expression)>),
 }
 
 impl Expression {
@@ -98,6 +99,7 @@ impl Expression {
                     return Err(());
                 }
             }
+            Expression::Ite(contents) => contents.1.unrefined_type()?,
         })
     }
 
@@ -127,6 +129,11 @@ impl Expression {
             Expression::Tuple(contents) => {
                 contents.0.substitute(expr, target);
                 contents.1.substitute(expr, target);
+            }
+            Expression::Ite(contents) => {
+                contents.0.substitute(expr, target);
+                contents.1.substitute(expr, target);
+                contents.2.substitute(expr, target);
             }
         }
     }
@@ -200,6 +207,11 @@ impl<'a> LambdaLifter<'a> {
 
     fn lift_expression(&mut self, expr: SExpression) -> Expression {
         match expr.kind {
+            SExpressionKind::Ite(contents) => Expression::Ite(Box::new((
+                self.lift_expression(contents.0),
+                self.lift_expression(contents.1),
+                self.lift_expression(contents.2),
+            ))),
             SExpressionKind::U8Rec(id, iter_type, contents) => {
                 let iter_type = self.lift_type(iter_type);
                 let typ = Type::Function(id, Box::new((Type::U8, iter_type)));

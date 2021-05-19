@@ -107,6 +107,7 @@ pub enum ExpressionKind {
     First(Box<Expression>),
     Second(Box<Expression>),
     U8Rec(Identifier, Type, Box<(Expression, Expression, Expression)>),
+    Ite(Box<(Expression, Expression, Expression)>),
 }
 
 #[derive(Clone, Debug)]
@@ -144,6 +145,9 @@ impl fmt::Display for Expression {
                 "(u8rec {} {} {})",
                 &contents.0, &contents.1, &contents.2
             )?,
+            ExpressionKind::Ite(contents) => {
+                write!(fmt, "(ite {} {} {})", &contents.0, &contents.1, &contents.2)?
+            }
         };
         Ok(())
     }
@@ -192,6 +196,11 @@ impl Expression {
             }
             ExpressionKind::U8Rec(_, typ, contents) => {
                 typ.substitute(expr, env, id);
+                contents.0.substitute(expr, env, id);
+                contents.1.substitute(expr, env, id);
+                contents.2.substitute(expr, env, id);
+            }
+            ExpressionKind::Ite(contents) => {
                 contents.0.substitute(expr, env, id);
                 contents.1.substitute(expr, env, id);
                 contents.2.substitute(expr, env, id);
@@ -396,6 +405,10 @@ fn add_applications_to_vec(
                 Application::U8Rec(contents.0.clone(), contents.1.clone(), contents.2.clone()),
             ));
         }
+        ExpressionKind::Ite(contents) => {
+            add_applications_to_vec(&contents.0, context.clone(), applications);
+            add_applications_to_vec(&contents.1, context, applications);
+        }
     };
 }
 
@@ -489,6 +502,7 @@ fn arg_type(
                 return Err(());
             }
         },
+        ExpressionKind::Ite(contents) => arg_type(&contents.1, context, args)?,
         ExpressionKind::Ast | ExpressionKind::Call(_, _) => return Err(()),
     })
 }
@@ -734,6 +748,27 @@ impl Analyzer {
                             .union(count.env.clone()),
                         typ: init.typ.clone(),
                         kind: ExpressionKind::U8Rec(n_id, typ, Box::new((init, iter, count))),
+                    }
+                } else {
+                    return Err(());
+                }
+            }
+            SExpression::Ite(cond, if_branch, else_branch) => {
+                let cond = self.label_expression(cond, env.clone())?;
+                if let UnrefinedType::Bool = &cond.typ {
+                    let if_branch = self.label_expression(if_branch, env.clone())?;
+                    let else_branch = self.label_expression(else_branch, env.clone())?;
+                    if if_branch.typ != else_branch.typ {
+                        return Err(());
+                    }
+                    Expression {
+                        env: cond
+                            .env
+                            .clone()
+                            .union(if_branch.env.clone())
+                            .union(else_branch.env.clone()),
+                        typ: if_branch.typ.clone(),
+                        kind: ExpressionKind::Ite(Box::new((cond, if_branch, else_branch))),
                     }
                 } else {
                     return Err(());
