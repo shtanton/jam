@@ -2,9 +2,9 @@
 
 \subsection{Introducing The Calculus}
 
-The type checker is easily the most complex aspect of the compiler, as the type system of Refine is
+The type checker is easily the most complex aspect of the compiler, as the type system of \textsc{Refine} is
 so much more expressive than most languages.
-$\lambda^{\times \rightarrow \sqsubseteq}$, which Refine is based on,
+$\lambda^{\times \rightarrow \sqsubseteq}$, which \textsc{Refine} is based on,
 is far more complex than the $\lambda^{\times \rightarrow}$
 calculus even though it only introduces refinement types.
 
@@ -24,7 +24,8 @@ refinement types, so I only pick out some interesting rules for discussion in Fi
         \hypo{\Gamma \vdash t: \phi}
         \hypo{\Gamma \vdash P[t/x]}
         \infer2[(REFTYPE-INTRO)]{\Gamma \vdash t: (x: \phi)P}
-    \end{prooftree} \quad
+    \end{prooftree}
+    \\[5mm]
     \begin{prooftree}
         \hypo{\Gamma \vdash \phi' \sqsubseteq \phi}
         \hypo{\Gamma, x: \phi \vdash t =_\psi t'}
@@ -33,7 +34,8 @@ refinement types, so I only pick out some interesting rules for discussion in Fi
     \begin{prooftree}
         \hypo{\Gamma \vdash t: \phi}
         \infer1[(REFL-EQ)]{\Gamma \vdash t =_\phi t}
-    \end{prooftree} \quad
+    \end{prooftree}
+    \\[5mm]
     \begin{prooftree}
         \hypo{\Gamma \vdash t: (x: \phi)P}
         \infer1[(REFTYPE-ELIM)]{\Gamma \vdash P[t/x]}
@@ -68,7 +70,7 @@ of $\pi_2(t)$ depends on the \textit{value} of $\pi_1(t)$.
 
 As well as the typing rules, I have defined various sets that Denney left abstract in his calculus.
 These are the ground types (Table \ref{tab:ground_types}), constants (Table \ref{tab:constants}),
-predicates (Table \ref{tab:predicates}) and axioms, which describe the semantics of the other 3
+predicates (Table \ref{tab:predicates}) and axioms, which describe the semantics of the other three
 sets, but which I won't list exhaustively, instead just looking at one interesting example in
 Figure \ref{fig:u8rec_axiom}.
 
@@ -130,7 +132,7 @@ Figure \ref{fig:u8rec_axiom}.
 \subsection{u8 vs nat}
 
 Denney's examples use $nat$ as the basic numeral type in his calculus, while I chose $u8$.
-There are 2 main advantages, and 1 main disadvantage to $u8$.
+There are two main advantages, and one main disadvantage to $u8$.
 
 \subsubsection{u8 Is Finite}
 
@@ -158,7 +160,7 @@ worthless, as it no longer can be relied upon to have valid proofs.
 
 \subsubsection{u8 Is Limited}
 
-$u8$ can't represent a very large range of values, I only chose it for simplicity, but if Refine
+$u8$ can't represent a very large range of values, I only chose it for simplicity, but if \textsc{Refine}
 were being written for use in industry, signed 32 or 64 bit integers would have made more sense.
 
 \subsection{Implementing The Typing Rules}
@@ -186,15 +188,15 @@ which is very difficult also.
 
 In fact, because of the first order logic embedded into
 $\lambda^{\times \rightarrow \sqsubseteq}$, we can reduce the (very difficult)
-problem of satisfication for first order logic to checking a judgement in the calculus, which
-indicates type checking Refine is NP-hard (and limited by our best efforts to automate first order proofs).
+problem of satisfaction for first order logic to checking a judgement in the calculus, which
+indicates type checking \textsc{Refine} is NP-hard (and limited by our best efforts to automate first order proofs).
 
 To be able to check types, I break the problem down into logic which can be dealt with by an SMT
 solver using a method I discuss in the next chapter.
 
 \subsection{Another Calculus}
 
-While researching calculuses related to refinement types, I found another calculus which I nearly
+While researching calculi related to refinement types, I found another calculus which I nearly
 settled on for my implementation.
 This paper by Aguirre \cite{aguirre16} describes a calculus, and includes a mapping to SMT which
 is proved correct.

@@ -1,10 +1,10 @@
 \section{Introduction}
 
-I have developed a compiler for a language I call Refine,
+I have developed a compiler for a language I call \textsc{Refine},
 which has runtime semantics much like Haskell, but typing semantics much like a calculus defined
 by Denney \cite{denney98}, which I'll call $\lambda^{\times \rightarrow \sqsubseteq}$.
-$\lambda^{\times \rightarrow \sqsubseteq}$ and Refine both make use of refinement types to push
-the boundaries formal verification.
+$\lambda^{\times \rightarrow \sqsubseteq}$ and \textsc{Refine} both make use of refinement types to push
+the boundaries of formal verification.
 This means properties of a program can be formally verified, mathematically proving them to be true
 and improving the reliability of software.
 
@@ -22,7 +22,7 @@ filter the set using a predicate.
 Using Denney's syntax for a refinement type, the type
 $(x:nat)x<5$ corresponds to the set $\{x \in nat | x < 5\}$ which is equivalent to
 $\{0, 1, 2, 3, 4\}$.
-Because Refine strongly resembles the $\lambda^{\times \rightarrow}$ calculus
+Because \textsc{Refine} strongly resembles the $\lambda^{\times \rightarrow}$ calculus
 with simple types, it is easy to see that any term can be fully $\beta$ and $\eta$ reduced to
 arrive at a value for the term.
 If, in a given context, every possible value a term can take is in the set of values corresponding to
@@ -55,20 +55,21 @@ but there are classes of problems for which refinement types are very useful.
 
 The first is a problem where verifying a correct solution is much easier than finding
 the solution.
-Denney uses the example of $div2$ which divides a natural number by 2, rounding down.
+Denney uses the example of $div2$ which divides a natural number by two, rounding down.
 Finding the solution to $div2\ n$ involves iterating $n$ times and alternately incrementing
-2 counters, which is far more complex than doubling the result and seeing if it is $n$ or
+two counters, which is far more complex than doubling the result and seeing if it is $n$ or
 $n-1$.
 \begin{quote}
     If verifying a result is simpler than computing a result then refinement types can prove that
     every result is correct.
 \end{quote}
 
-The second is a problem where there are 2 algorithms which could be used to compute a value.
+The second is a problem where there are two algorithms which could be used to compute a value.
 One has preferable runtime characteristics (such as better time or space complexity), while
 the other is easier to prove by hand.
-Refinement types allow the programmer to implement both, then have the compiler check they are
-equivalent to prove that the more useful implementation also functions correctly.
+Refinement types allow the user to implement both, and give the more useful implementation a type
+which forces it to be equivalent to the simpler implementation, improving the reliability of complex
+programs.
 Suppose we want to check if a natural number, $n$, is even.
 We already have a $div2$ function which we know works, so we could run it, then double the
 result and compare it to $n$.
@@ -84,20 +85,25 @@ we don't need to worry that we've broken something.
 \end{quote}
 
 There may be other cases for which refinement types can be particularly useful, but at least in
-these 2 instances, a refinement typed language can give much more confidence than testing ever
+these two instances, a refinement typed language can give much more confidence than testing ever
 could.
-
-\begin{itshape}
-    I'll add an example of the type checker finding a non-obvious bug in some code here once the
-    type checker is more capable.
-\end{itshape}
+As an example, suppose I write a function which sorts a 2-tuple of integers.
+I might naively give it the type $u8 \times u8 \rightarrow \Sigma_{x:u8} (y:u8){x \textless y}$,
+meaning
+\textit{a function taking a pair of integers and returning a pair such that the first is less than then second}.
+I have missed an edge case here, as I've forgotten that the input pair may be the same.
+To fix this, I could change the return type to use $\leq$, or if I have later used the assumption that
+that values are distinct, then I need to have that assumption in my sorting function by changing the
+parameter type to $\Sigma_{x:u8} (y:u8){x \neq y}$.
+Without refinement types, this edge case could've been missed in testing and caused the program to
+error or behave incorrectly in production.
 
 \subsection{Refine}
 
-Refine is based on $\lambda^{\times \rightarrow \sqsubseteq}$, with a few changes.
-$\lambda^{\times \rightarrow \sqsubseteq}$ has 5 types (Table \ref{tab:types}),
-7 terms (Table \ref{tab:terms}) and propositions, which are mostly first order logic constructs
-that I won't repeat, though I show the most interesting 2 in Table \ref{tab:propositions}.
+\textsc{Refine} is based on $\lambda^{\times \rightarrow \sqsubseteq}$, with a few changes.
+$\lambda^{\times \rightarrow \sqsubseteq}$ has five types (Table \ref{tab:types}),
+seven terms (Table \ref{tab:terms}) and propositions, which are mostly first order logic constructs
+that I won't repeat, though I show the most interesting two in Table \ref{tab:propositions}.
 
 \begin{table}
     \begin{tabular}{|r|p{0.8\textwidth}|}
@@ -105,16 +111,16 @@ that I won't repeat, though I show the most interesting 2 in Table \ref{tab:prop
         \textbf{1} &
         The unit type, a term of type \textbf{1} must have the value $\ast$.\\\cline{1-2}
         $\gamma$ &
-        A ground type, in Refine this is one of $bool$ (boolean) or $u8$ (unsigned 8 bit integer)\\\hline
+        A ground type, in \textsc{Refine} this is one of $bool$ (boolean) or $u8$ (unsigned 8 bit integer)\\\hline
         $\Sigma_{x:\phi} \psi$ &
         A pair of values (2-tuple).
         The first has type $\phi$ and the second has type $\psi$.
         Contrary to the $\lambda^{\times \rightarrow}$ calculus, the type of the second value
         can be dependent on the first value.
-        For example a tuple of 2 numbers could be restricted so the second is equal to the
+        For example a tuple of two numbers could be restricted so the second is equal to the
         first with the type
         $\Sigma_{x: u8} (y: u8) x =_{u8} y$.
-        We refer to the ability for a type to depend on a value as \textit{dependent typing}\\\cline{1-2}
+        We refer to the ability for a type to depend on a value as \textit{dependent typing}.\\\cline{1-2}
         $\Pi_{x:\phi} \psi$ &
         A function from $\phi$ to $\psi$.
         These are also dependently typed, the type of the return value can be restricted based on the
@@ -151,7 +157,7 @@ that I won't repeat, though I show the most interesting 2 in Table \ref{tab:prop
         Extract a value from a 2-tuple. $i \in \{1, 2\}$.\\\cline{1-2}
         $t\ t'$ &
         Apply function $t$ to argument $t'$.
-        Refine uses call-by-name semantics.\\\hline
+        \textsc{Refine} uses call-by-name semantics.\\\hline
     \end{tabular}
     \caption{Terms}
     \label{tab:terms}
@@ -162,14 +168,17 @@ that I won't repeat, though I show the most interesting 2 in Table \ref{tab:prop
         \hline
         $t =_\phi t'$ &
         This functions almost exactly as you would expect from equality, with the exception of function types.
-        2 functions can be equal even if they don't have the same image, we only care about functions
+        Two functions can be equal even if they don't have the same image, we only care about functions
         restricted to the domain of $\phi$.
         Denney's (ABS-$\xi$-EQ) rule is used for this, and allows us to prove propositions like\newline
         $\lambda x: bool . x \quad =_{(x:bool) x =_{bool} true\ \rightarrow\ bool} \quad \lambda x: bool . true$.
         \\\cline{1-2}
         $\phi \sqsubseteq \psi$ &
         This is defined to mean $\phi$ is a supertype of $\psi$,
-        so any value which a term of type $\psi$ could have, $\phi$ can also have.\\\hline
+        so any value which a term of type $\psi$ could have, $\phi$ can also have.
+        Usually one would expect this syntax to be a subtyping relation, however, for consistency with
+        Denney I have continued to use it to mean supertype (written \texttt{:>} in both Scala and
+        the syntax for my compiler).\\\hline
     \end{tabular}
     \caption{Propositions}
     \label{tab:propositions}
@@ -191,7 +200,7 @@ I've added some extra terms using syntactic sugar to make life easier for the us
     $\lnot P \coloneqq P \supset false$
 \end{center}
 
-I define Refine's operational semantics in line with that of the $\lambda^{\times \rightarrow}$ calculus.
+I define \textsc{Refine}'s operational semantics in line with that of the $\lambda^{\times \rightarrow}$ calculus.
 
 \begin{center}
     $(\lambda x: \phi . t) t' \rightarrow_\beta t[t'/x]$
@@ -199,7 +208,7 @@ I define Refine's operational semantics in line with that of the $\lambda^{\time
     $\pi_i(\langle t_1, t_2 \rangle) \rightarrow_\beta t_i$
 \end{center}
 
-To see the strength of refinement types, consider the simple example of ordering 2 integers in
+To see the strength of refinement types, consider the simple example of ordering two integers in
 Figure \ref{fig:refinement_ordering}.
 $\Gamma$ is $x: \Sigma_{y:u8} u8$, $c$ is $\pi_1(x) < \pi_2(x)$ and $\phi$ is $\Sigma{y:u8} (z:u8) y \leq z$.
 
@@ -223,7 +232,7 @@ $\Gamma$ is $x: \Sigma_{y:u8} u8$, $c$ is $\pi_1(x) < \pi_2(x)$ and $\phi$ is $\
 
 \subsection{My Compiler}
 
-A compiler for Refine has 2 main jobs.
+A compiler for \textsc{Refine} has two main jobs.
 First, as with any compiler, to produce an executable which can be run to reach an outcome in line
 with the semantics of the language.
 Secondly, and more interestingly, either prove that any term which is type guarded must evaluate
@@ -243,7 +252,7 @@ It also interprets the results from Z3 as they determine if there is a type chec
 
 \subsubsection{LLVM}
 
-I chose to compile Refine to LLVM (which Rust coincidentally also compiles to) instead of
+I chose to compile \textsc{Refine} to LLVM (which Rust coincidentally also compiles to) instead of
 directly to any machine code.
 LLVM is another relatively recent technology which enables developers to write compilers which can
 target a wide array of architectures with much less effort than was historically needed.
@@ -257,9 +266,9 @@ bytecode and link it into a standalone executable.
 The third big recent technology I made use of was the Z3 SMT solver, which I tasked with formally
 proving programs were sound once my type checker had reduced the problem down to first order SAT.
 I do this by giving Z3 a set of constraints within which it tries to find a satisfying assignment.
-These constraints force it to find a counterexample to the type guards of the Refine program so
+These constraints force it to find a counterexample to the type guards of the \textsc{Refine} program so
 either it will find such a counterexample or prove that it doesn't exist.
-The largest hurdle is translating a Refine program to a series of SMT programs for Z3.
+The largest hurdle is translating a \textsc{Refine} program to a series of SMT programs for Z3.
 Z3 lacks various important features like higher order functions and lambda abstractions which I
 was forced to find ways to remove without changing the semantics of a term to allow Z3 to understand
 said term.
@@ -269,9 +278,9 @@ Type Checker Implementation.
 \bigskip
 
 Learning how to use each of these technologies was very enjoyable, and tied in with a lot of the
-courses I've taken over the last 2 years.
-Particularly: compilers, computer aided formal verification, lambda calculus and types, logic and proof
-and principles of programming languages all were very useful in enabling me to know how to proceed
+courses I've taken over the last two years.
+Particularly: Compilers, Computer Aided Formal Verification, Lambda Calculus and Types, Logic and Proof
+and Principles of Programming Languages all were very useful in enabling me to know how to proceed
 with challenging areas of the project.
 
 \subsubsection{Compiler Structure}
@@ -281,5 +290,5 @@ IR bytecode generation, linking.
 The type checking stage is split further into several stages as it is the most complex due to the
 complexity of the type system.
 The parsing, labelling and IR bytecode generation stages are not particularly complicated, however
-learning to use LLVM for code generation took quite some time and because Refine is functional,
+learning to use LLVM for code generation took quite some time and because \textsc{Refine} is functional,
 compiling to assembly is not as straightforward as it would be for a procedural language.

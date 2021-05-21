@@ -106,7 +106,7 @@ for example, the type checker and code generator both need to the free variables
 
 \subsection{Thunking}
 
-This pass does a number of adjustements, with the goal of replacing any argument, $v$ with an abstraction,
+This pass does a number of adjustments, with the goal of replacing any argument, $v$ with an abstraction,
 $\lambda x: \textbf{1} . v$.
 There are several other changes that need to take place for the syntax tree to remain consistent under this
 change.
@@ -151,12 +151,12 @@ LLVM removed a lot of work I otherwise would have needed to do myself:
     Some instruction sets have functions, but LLVM functions can take or return large types like
     structures.
     \item Targeting Several Platforms -
-    Had I written my compiler to compile straight to assembly for an architecture, code in Refine could
+    Had I written my compiler to compile straight to assembly for an architecture, code in \textsc{Refine} could
     only have been executed on that hardware.
     With LLVM my code can be executed on nearly any system.
 \end{itemize}
 I extensively used the LLVM Language Reference Manual \cite{llvm} to determine which LLVM instructions
-would correspond to each of Refine's constructs.
+would correspond to each of \textsc{Refine}'s constructs.
 This was mostly straightforward, all of my constants other than $u8rec$ have obvious representations
 in LLVM, $\ast$ is represented using a null byte, $u8$ and $bool$ are also both bytes with $bool$ using
 $0$ and $1$ as $false$ and $true$ respectively and 2-tuples map well onto LLVM structures.
@@ -174,7 +174,7 @@ Because my closures can be returned from functions, a child function might outli
 returned and then applied, so it needs a whole copy of the necessary data to prevent any of it being
 missing when it is applied.
 This has the disadvantage that if any of the data changes since the closure is constructed, it is no longer
-correct, however, all state is immutable in Refine so this isn't possible.
+correct, however, all state is immutable in \textsc{Refine} so this isn't possible.
 
 Because a closure may outlive any function, I chose to allocate it on the heap, which has the added problem
 of freeing the memory once I'm done with it.
@@ -183,7 +183,7 @@ There is also the problem that since the closure contains a function which takes
 the type of the closure is contained within itself so cannot be expressed.
 Fortunately, I can use a byte pointer as the type of the closure in the function parameter, and bitcast it
 before and after passing it.
-Finally there is the problem that 2 closures might have the same type in Refine, but due to differences
+Finally there is the problem that two closures might have the same type in \textsc{Refine}, but due to differences
 in captured variables, have different types in LLVM.
 What would the type be for a function that could take either of these closures as a parameter?
 The solution is that all closures are are bitcast to pointers to structs with only function pointers,
@@ -233,7 +233,7 @@ As with the type checker, implementing $u8rec$ was particularly challenging.
 LLVM bytecode uses SSA (static single assignment) form, which means that variables cannot be reassigned to.
 Instead of this, we use phi nodes to implement constructs like loops.
 
-A bytecode representation of $u8rec$ has 4 blocks
+A bytecode representation of $u8rec$ has four blocks
 \begin{itemize}
     \item \textbf{Entry} -
     Constructs a thunk for the initial accumulator value (the value passed through the function each loop).

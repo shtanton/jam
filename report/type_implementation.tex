@@ -16,7 +16,7 @@ leaves $(\lambda n: (n:u8) n > 3 . n)\ 5$.
 
 First we look at where type guards are applied, as these are the areas where we need to check
 that terms satisfy certain conditions.
-There are 5 ways in which a type guard can be applied, but 4 of them don't involve refinement types.
+There are five ways in which a type guard can be applied, but four of them don't involve refinement types.
 
 \begin{itemize}
     \item Applying a function defined by the user -
@@ -25,7 +25,7 @@ There are 5 ways in which a type guard can be applied, but 4 of them don't invol
     \item Using $\pi_i$ to extract a value from a 2-tuple -
     We need to check that the term being extracted from is in fact a 2-tuple.
     \item Calling a constant.
-    Arguments to constants in Refine are restricted to one of the unrefined types
+    Arguments to constants in \textsc{Refine} are restricted to one of the unrefined types
     except $ite$ and $u8rec$ which are handled separately.
     \item Calling a predicate.
     Similarly, arguments to predicates are restricted to one of the unrefined types.
@@ -53,7 +53,7 @@ I do this with the functions \texttt{arg\_type} and \texttt{arg\_type\_of\_type}
 
 \subsubsection{arg\_type}
 
-\texttt{arg\_type} takes 3 arguments in order to determine the type of the parameter of an expression.
+\texttt{arg\_type} takes three arguments in order to determine the type of the parameter of an expression.
 
 \begin{itemize}
     \item An expression, which it will try to find the parameter type of, assuming it has undergone
@@ -161,12 +161,12 @@ which are not within the capabilities of first order logic, nor the Z3 SMT solve
 As an aside, my first thought for how to do this was to defunctionalize the program, which I later
 refined down to an algorithm less complex than defunctionalization.
 I implemented this algorithm, which first lambda lifted abstractions, then removed tuples from the
-program (by introducing 2 separate variables whenever a tuple variable was introduced), then removed
-all higher order functions using uncurrying and specialization.
+program (by introducing two separate variables whenever a tuple variable was introduced), then removed
+all higher order functions using uncurrying and specialisation.
 This worked nearly perfectly, but tragically failed if a variable of function type was introduced
-in a universal quantifier, as defunctionalization and specialization both rely on knowing a finite
+in a universal quantifier, as defunctionalization and specialisation both rely on knowing a finite
 set of functions used in the same way, but if a higher order function comes from a universal
-quantifier, then this set is infinite so a function receiving it as an argument cannot be specialized.
+quantifier, then this set is infinite so a function receiving it as an argument cannot be specialised.
 This led to me losing dozens of hours of work as I only realised this problem after implementing
 almost all of the type checker this way.
 
@@ -226,7 +226,7 @@ easily, so higher order functions are no longer a problem.
 \subsection{Translation To SMT}
 
 I've already shown how I encode application to circumvent the lack of higher order functions in Z3.
-To make the code more readable I split the translation up into 2 parts.
+To make the code more readable I split the translation up into two parts.
 The first produces a program encoded using structures I defined in Rust, which makes it much easier
 to work with while doing the translation.
 I then map that onto an actual Z3 program using the Rust Z3 library which takes very little effort
@@ -234,7 +234,7 @@ due to my Rust data structures already being very close to how programs are enco
 
 \subsubsection{My SMT Structure}
 
-My SMT data structure consists of 3 lists:
+My SMT data structure consists of three lists:
 
 \begin{itemize}
     \item \textbf{Constant Declarations} -
@@ -363,7 +363,7 @@ of the SMT solver.
 
 The obvious way to implement u8rec would be to define a \texttt{u8rec} function in Z3, which can be
 used in translated expressions.
-We could do so using 2 of Denney's axiom schemas which describe equalities.
+We could do so using two of Denney's axiom schemas which describe equalities.
 
 \begin{alltt}
 (declare-sort bool_to_bool)
@@ -395,7 +395,7 @@ of both of these rules.
 
 \subsubsection{Type Focused Implementation Of u8rec}
 
-Due to this limitation, I found that I could leave out 2 of Denney's axiom schemas, and use only the
+Due to this limitation, I found that I could leave out two of Denney's axiom schemas, and use only the
 remaining one to be accessible to Z3, without greatly limiting its usefulness.
 The rule I keep is
 
@@ -409,9 +409,9 @@ The rule I keep is
 \end{center}
 
 The compiler is able to reason with this rule by determining in the labelling pass what the type
-$\phi[n]$ is, and then it adds 3 type judgements based on $\phi[n]$ for $n$, $t$ and $t'$ and
-replaces the occurence of $u8rec\ t\ t'\ n$ with a variable of type $\phi[n]$.
-This means that after the lambda lifting pass, all occurences of $u8rec$ are gone so the translation
+$\phi[n]$ is, and then it adds three type judgements based on $\phi[n]$ for $n$, $t$ and $t'$ and
+replaces the occurrence of $u8rec\ t\ t'\ n$ with a variable of type $\phi[n]$.
+This means that after the lambda lifting pass, all occurrences of $u8rec$ are gone so the translation
 to SMT doesn't need to be able to deal with them.
 This approach effectively forces the user to provide the base case and inductive hypothesis explicitly,
 as the compiler gets the definition of $\phi[n]$ from the term $t'$ using the previously mentioned
@@ -462,7 +462,7 @@ is a lot of overlap as they all come from the same program.
 It would be possible to do a lot of the computation before splitting the program into judgements,
 and then checking them all in parallel to speed up type checking.
 The biggest change I could make, would be to make changes to the SMT program that is produced to
-make it quicker to check for satisfication.
+make it quicker to check for satisfaction.
 Because of the equivalence
 
 \begin{center}

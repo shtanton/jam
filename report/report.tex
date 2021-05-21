@@ -7,12 +7,25 @@
 \usepackage[margin=1.2in]{geometry}
 \usepackage{ebproof}
 \usepackage{alltt}
-
-\title{Project Report}
-\author{Charlie Stanton}
+\usepackage{minted}
+\usepackage{setspace}
+\doublespacing
 
 \begin{document}
-    \maketitle
+    \begin{titlepage}
+        \begin{center}
+            \vspace*{2in}
+            \Huge
+            A Functional Language Focused On Compile Time Verification
+            \Large
+
+            Trinity Term 2021
+
+            Candidate Number: 1036732
+
+            Computer Science
+        \end{center}
+    \end{titlepage}
 
     \include{introduction}
 
@@ -26,4 +39,7 @@
 
     \bibliographystyle{abbrv}
     \bibliography{sources}
+
+    \singlespacing
+    \include{appendix}
 \end{document}
