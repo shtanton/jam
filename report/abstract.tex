@@ -1,0 +1,17 @@
+\begin{center}
+    \large
+    \textbf{Abstract}
+\end{center}
+I explore possibilities for implementing a compiler for a typed lambda calculus which makes use of
+refinement types.
+The compiler takes as input a program, and uses a combination of standard, well-tested compiler techniques
+with some recent developments in formal verification to type check the program and produce an executable.
+Refinement types allow properties of the program to be specified using types and formally proven at
+compile time to prevent a wide class of bugs.
+Properties are specified by refining types to restrict the set of values which a variable will be
+able to take when the program runs.
+By making it impossible for certain states to occur, we can know a program works with a much higher
+degree of certainty than we could ever achieve with unit tests.
+My compiler uses the Z3 SMT solver to either prove that a program is sound, or to find a counterexample
+showing a possible environment in which the value wouldn't be allowed by the type.
+Finally it generates an executable using LLVM allowing the verified program to be run.
